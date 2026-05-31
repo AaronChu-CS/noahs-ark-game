@@ -1163,9 +1163,30 @@ function getQuestText() {
 }
 
 function getPrimaryStatusText() {
-  if (arkCallComplete) return "Genesis 6:14-22 - Preparing the Ark";
-  if (phaseComplete) return "Genesis 6: God Calls Noah";
-  return `${phaseStatus.bibleReference}: ${phaseStatus.name}`;
+  if (journeyStarted) return "Genesis 7:7 - The Journey Begins";
+  if (finalStoresComplete) return "Genesis 7:1, 7 - Enter the Ark";
+  if (sealComplete) return "Genesis 6:21 - Food for the Ark";
+  if (animalsComplete) return "Genesis 6:14 - Cover It with Pitch";
+  if (roomsComplete) return "Genesis 7:2-3 - Clean and Unclean Pairs";
+  if (buildComplete) return "Genesis 6:14, 16 - Rooms and Decks";
+  if (arkCallComplete && activeMinigame) {
+    if (activeMinigame.type === "wood" || activeMinigame.type === "build") return "Genesis 6:14 - Gopher Wood";
+    if (activeMinigame.type === "pitch" || activeMinigame.type === "seal") return "Genesis 6:14 - Pitch Seal";
+    if (activeMinigame.type === "food" || activeMinigame.type === "stores") return "Genesis 6:21 - Food Stores";
+    if (activeMinigame.type === "rooms") return "Genesis 6:14, 16 - Rooms and Decks";
+    if (activeMinigame.type === "animals") return "Genesis 7:2-3 - Animal Pairs";
+  }
+  if (arkCallComplete && hasAllMaterials()) return "Genesis 6:14-16 - Ark Frame";
+  if (arkCallComplete) return getGatheringReferenceText();
+  if (phaseComplete) return "Genesis 6:13-22 - God Calls Noah";
+  return "Genesis 6:5-12 - The Wicked World";
+}
+
+function getGatheringReferenceText() {
+  if (currentMapId === "forest") return "Genesis 6:14 - Gopher Wood";
+  if (currentMapId === "pitch") return "Genesis 6:14 - Pitch";
+  if (currentMapId === "supplies") return "Genesis 6:21 - Food Stores";
+  return "Genesis 6:14-21 - Preparing Supplies";
 }
 
 function getProgressText() {

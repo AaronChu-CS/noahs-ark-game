@@ -1,0 +1,4772 @@
+const canvas = document.getElementById("gameCanvas");
+const ctx = canvas.getContext("2d");
+ctx.imageSmoothingEnabled = false;
+
+const titleScreen = document.getElementById("titleScreen");
+const loadScreen = document.getElementById("loadScreen");
+const optionsScreen = document.getElementById("optionsScreen");
+const pauseScreen = document.getElementById("pauseScreen");
+const saveScreen = document.getElementById("saveScreen");
+const topMenuBtn = document.getElementById("topMenuBtn");
+const touchDpad = document.getElementById("touchDpad");
+const loadSlotList = document.getElementById("loadSlotList");
+const saveSlotList = document.getElementById("saveSlotList");
+const dialogBox = document.getElementById("dialogBox");
+const statusPrimaryEl = document.getElementById("statusPrimary");
+const statusSecondaryEl = document.getElementById("statusSecondary");
+const statusProgressEl = document.getElementById("statusProgress");
+const titleHint = document.getElementById("titleHint");
+const loadHint = document.getElementById("loadHint");
+const pauseHint = document.getElementById("pauseHint");
+const saveHint = document.getElementById("saveHint");
+const modalScreen = document.getElementById("modalScreen");
+const modalKicker = document.getElementById("modalKicker");
+const modalTitle = document.getElementById("modalTitle");
+const modalMessage = document.getElementById("modalMessage");
+const modalInput = document.getElementById("modalInput");
+const modalOptions = document.getElementById("modalOptions");
+const modalCancel = document.getElementById("modalCancel");
+const modalConfirm = document.getElementById("modalConfirm");
+
+const tileSize = 32;
+const cols = 28;
+const rows = 18;
+const saveKey = "noahsArkSaveSlots";
+const legacySaveKey = "noahsArkPhase1Save";
+const saveSlotCount = 4;
+const defaultSaveName = "Noah's Journey";
+const dialogPromptDelay = 3000;
+
+const screenStatus = {
+  title: {
+    primary: "Start a game!",
+    secondary: "Choose New Game or Load Game.",
+    progress: "",
+  },
+  load: {
+    primary: "Load Game",
+    secondary: "Choose a saved game.",
+    progress: "",
+  },
+  options: {
+    primary: "About",
+    secondary: "Read the story covered so far.",
+    progress: "",
+  },
+};
+
+const titleMenuActions = ["new", "load", "options"];
+
+const phaseStatus = {
+  bibleReference: "Genesis 6",
+  name: "The Wicked World",
+  progressLabel: "Townspeople Heard",
+  progressTotal: 4,
+  quest: {
+    active: "Talk to the townspeople",
+    returnHome: "Return home",
+    complete: "God has called Noah",
+  },
+};
+
+const arkCallCutsceneLines = [
+  "Night grows quiet around Noah's home. The noise of the town fades.",
+  "A warm light shines near Noah. It is bright and holy, but it does not look like a person.",
+  "God: Noah, I have seen that the earth is filled with violence.",
+  "God: The people have chosen corruption again and again, but you have walked with Me.",
+  "God: I am going to bring a flood of waters upon the earth.",
+  "God: Make yourself an ark of gopher wood.",
+  "God: Build rooms inside the ark. These rooms will hold your family, the animals, and the food they will need.",
+  "God: Cover the ark inside and outside with pitch, a thick sealing tar, so water cannot leak through.",
+  "God: Make the ark 300 cubits long, 50 cubits wide, and 30 cubits high.",
+  "God: Make a window, or opening, near the top for light and air.",
+  "God: Put a door in the side of the ark.",
+  "God: Build three levels inside it: a lower deck, a second deck, and a third deck.",
+  "God: Bring food into the ark and store it carefully. It will be food for you, your family, and the living creatures.",
+  "God: I will establish My covenant with you. You, your wife, your sons, and your sons' wives will enter the ark.",
+  "God: I will bring the living creatures to you so they may be kept alive.",
+  "Noah listens carefully. The command is large, but God's words are clear.",
+  "Noah: I will obey the Lord. I will begin with wood, pitch, tools, and food stores.",
+];
+
+const phase2Start = { x: 13, y: 9, facing: "up" };
+const requiredMaterials = { wood: 12, pitch: 8, food: 6 };
+
+const TILE = {
+  sand: ".",
+  path: ",",
+  grass: "g",
+  field: "f",
+  water: "w",
+  house: "u",
+  tent: "t",
+  stone: "s",
+  altar: "h",
+  tree: "r",
+  well: "o",
+  fence: "x",
+  market: "m",
+  jar: "j",
+  cart: "c",
+  cloth: "q",
+  fire: "b",
+};
+
+const mapRows = [
+  "rrrrrggggg....ttttt.....gggg",
+  "rgggggggg..jj.ttutt..cc.gggg",
+  "gggffffggg....ttttt.....gggg",
+  "ggffffffgg,,,,,,,,,,,,,,,,gg",
+  "gggffffggg,.,,..ssss,..tttgg",
+  "ggggggggg,,,....s..s,..tttgg",
+  "....,,,,,,,,....ssss,..tttgg",
+  "...,,mmm,,,...,,,,,,,,,,,,gg",
+  "...,,mqm,,,...,,,,....,.oogg",
+  "...,,,,,,,...,,,,....,,,,ggg",
+  "ttt....,,,,,,,...hh...ggggrr",
+  "ttt....,xxxxxx,...h...gffgrr",
+  "ttt....,x....x,,,,,,,,gffgrr",
+  "....,,,,x....x,wwwwww,gffgrr",
+  "....,...xxxxxx,wwwwww,ggggrr",
+  "ggg,,,,,,,,,,,,wwwwww....ggg",
+  "ggggggg....rrrrrrrr....ggrrr",
+  "ggggggg....rrrrrrrr....ggrrr",
+];
+
+function defineRows(rowsToNormalize) {
+  return rowsToNormalize.map((row) => {
+    const edgeTile = row[row.length - 1] || TILE.grass;
+    return row.padEnd(cols, edgeTile).slice(0, cols);
+  });
+}
+
+const phase2Maps = {
+  settlement: {
+    name: "Settlement",
+    rows: mapRows,
+    exits: {},
+  },
+  worksite: {
+    name: "Ark Worksite",
+    rows: defineRows([
+      "rrrrggg....,,,,....gggrrrr",
+      "rrrggg.....,,,,.....gggrrr",
+      "gggg....,,,,,,,,,,....gggg",
+      "ggg.....,,,,,,,,.....gggg",
+      "gg....,,,,ssssssss,,,,ggg",
+      "g....,,,,,s......s,,,,ggg",
+      "....,,,,,,s......s,,,,,gg",
+      "...,,,,,,,ssssssss,,,,..g",
+      ",,,,,,,,,,,,,,,,,,,,,,,,,,",
+      ",,,,,,,....,,,,....,,,,,,,",
+      "ggg,,,,....,,,,....,,,,ggg",
+      "gggg,,,....,,,,....,,,gggg",
+      "ggggg,,,,,,,,,,,,,,,,ggggg",
+      "ffffg,,,,,,....,,,,,,gffff",
+      "ffffg,,,,,,....,,,,,,gffff",
+      "ggggg,,,,,,....,,,,,,ggggg",
+      "ggggggg,,,,,,,,,,,,ggggggg",
+      "ggggggggggg,,,,ggggggggggg",
+    ]),
+    exits: {
+      left: { to: "forest", x: 25, y: 8, facing: "left" },
+      right: { to: "pitch", x: 2, y: 8, facing: "right" },
+      down: { to: "supplies", x: 13, y: 2, facing: "down" },
+    },
+  },
+  forest: {
+    name: "Gopher Wood Grove",
+    rows: defineRows([
+      "rrrrrrrrrrrrrrrrrrrrrrrrrrrr",
+      "rrrrrrrrrrrggggrrrrrrrrrrrr",
+      "rrrrrrggg,,,,,,,,gggrrrrrrr",
+      "rrrrggg,,,,,,,,,,,,gggrrrrr",
+      "rrrgg,,,,rrr,,rrr,,,,ggrrrr",
+      "rrgg,,,,rrrr,,rrrr,,,,ggrrr",
+      "rgg,,,,,,,,,,,,,,,,,,,,ggrr",
+      "gg,,,,,,,,,,,,,,,,,,,,,,ggr",
+      ",,,,,,,,,,,,,,,,,,,,,,,,,,,",
+      "gg,,,,,,,,,,,,,,,,,,,,,,ggr",
+      "rgg,,,,rrrr,,rrrr,,,,,,ggrr",
+      "rrgg,,,,rrr,,rrr,,,,,ggrrr",
+      "rrrgg,,,,,,,,,,,,,,,ggrrrrr",
+      "rrrrggg,,,,,,,,,,,gggrrrrrr",
+      "rrrrrrgggg,,,,ggggrrrrrrrrr",
+      "rrrrrrrrrr,,,,rrrrrrrrrrrrr",
+      "rrrrrrrrrr,,,,rrrrrrrrrrrrr",
+      "rrrrrrrrrr,,,,rrrrrrrrrrrrr",
+    ]),
+    exits: {
+      right: { to: "worksite", x: 2, y: 8, facing: "right" },
+    },
+  },
+  pitch: {
+    name: "Pitch Pits",
+    rows: defineRows([
+      "ggggggg....,,,,....ggggggg",
+      "ggggg.....,,,,,,.....ggggg",
+      "ggg....,,,,,,,,,,,,....ggg",
+      "gg....,,,hhhhhh,,,,....ggg",
+      "g....,,,,hbbbbh,,,,,....gg",
+      "....,,,,,hbbbbh,,,,,,....g",
+      "...,,,,,,hhhhhh,,,,,,,....",
+      ",,,,,,,,,,,,,,,,,,,,,,,,,,",
+      ",,,,,,,,,,,,,,,,,,,,,,,,,,",
+      "...,,,,,,hhhhhh,,,,,,,....",
+      "....,,,,,hbbbbh,,,,,,....g",
+      "g....,,,,hbbbbh,,,,,....gg",
+      "gg....,,,hhhhhh,,,,....ggg",
+      "ggg....,,,,,,,,,,,,....ggg",
+      "ggggg.....,,,,,,.....ggggg",
+      "ggggggg....,,,,....ggggggg",
+      "gggggggggg,,,,gggggggggggg",
+      "gggggggggg,,,,gggggggggggg",
+    ]),
+    exits: {
+      left: { to: "worksite", x: 25, y: 8, facing: "left" },
+    },
+  },
+  supplies: {
+    name: "Food Store Tents",
+    rows: defineRows([
+      "ggggggggggg,,,,ggggggggggg",
+      "ggggggg,,,,,,,,,,,,ggggggg",
+      "ggggg,,,,,,,,,,,,,,,,ggggg",
+      "ggg,,,,,,ttt,,ttt,,,,,,ggg",
+      "gg,,,,,,,ttt,,ttt,,,,,,,gg",
+      "g,,,,,,,,ttt,,ttt,,,,,,,,g",
+      ",,,,,,,,,,,,,,,,,,,,,,,,,,",
+      ",,,,,,,mmm,,,,,,mmm,,,,,,,",
+      ",,,,,,,mqm,,,,,,mqm,,,,,,,",
+      ",,,,,,,,,,,,,,,,,,,,,,,,,,",
+      "g,,,,,,,,jj,,,,jj,,,,,,,,g",
+      "gg,,,,,,,cc,,,,cc,,,,,,,gg",
+      "ggg,,,,,,,,,,,,,,,,,,,,ggg",
+      "ggggg,,,,,,,,,,,,,,,,ggggg",
+      "ffffg,,,,,,....,,,,,,gffff",
+      "ffffg,,,,,,....,,,,,,gffff",
+      "ggggg,,,,,,,,,,,,,,,,ggggg",
+      "gggggggggggggggggggggggggg",
+    ]),
+    exits: {
+      up: { to: "worksite", x: 13, y: 15, facing: "up" },
+    },
+  },
+};
+
+const tileColors = {
+  [TILE.sand]: "#dfc17a",
+  [TILE.path]: "#c99658",
+  [TILE.grass]: "#76a85b",
+  [TILE.field]: "#b8a04d",
+  [TILE.water]: "#4ea3ba",
+  [TILE.house]: "#cda36c",
+  [TILE.tent]: "#dcc48d",
+  [TILE.stone]: "#9b9687",
+  [TILE.altar]: "#7d776b",
+  [TILE.tree]: "#3f7445",
+  [TILE.well]: "#537f92",
+  [TILE.fence]: "#68452f",
+  [TILE.market]: "#b76548",
+  [TILE.jar]: "#a86e3c",
+  [TILE.cart]: "#76513a",
+  [TILE.cloth]: "#7f526e",
+  [TILE.fire]: "#8d4830",
+};
+
+const blockedTiles = new Set([
+  TILE.water,
+  TILE.house,
+  TILE.tent,
+  TILE.stone,
+  TILE.altar,
+  TILE.tree,
+  TILE.well,
+  TILE.fence,
+  TILE.market,
+  TILE.jar,
+  TILE.cart,
+  TILE.cloth,
+  TILE.fire,
+]);
+
+const playerStart = { x: 15, y: 3, facing: "down" };
+const player = { ...playerStart };
+
+const townspeople = [
+  {
+    id: "mockers",
+    name: "Mockers",
+    x: 21,
+    y: 6,
+    robe: "#a53d3b",
+    hair: "#2d1b14",
+    evidence: "mocking",
+    lines: [
+      "Mocker: Noah, why do you keep speaking about righteousness?",
+      "Mocker: We will live as we please. No warning will change our ways.",
+    ],
+  },
+  {
+    id: "violent",
+    name: "Fighter",
+    x: 5,
+    y: 9,
+    robe: "#6d3b2f",
+    hair: "#1f1712",
+    evidence: "violence",
+    lines: [
+      "Angry man: Move aside, Noah. That grain belongs to whoever can take it.",
+      "The crowd watches the violence and does not seek peace.",
+    ],
+  },
+  {
+    id: "merchant",
+    name: "Merchant",
+    x: 9,
+    y: 7,
+    robe: "#386f61",
+    hair: "#3b2417",
+    evidence: "dishonesty",
+    lines: [
+      "Merchant: This stone is lighter than a real weight, but I still use it to measure grain.",
+      "Noah sees that the merchant is cheating people by giving them less than they paid for.",
+    ],
+  },
+  {
+    id: "proud",
+    name: "Proud Man",
+    x: 19,
+    y: 8,
+    robe: "#7a4d88",
+    hair: "#23160f",
+    evidence: "pride",
+    lines: [
+      "Proud man: We need no correction from God or from you.",
+      "Proud man: Our own strength and our own names will make us great.",
+    ],
+  },
+  {
+    id: "family",
+    name: "Noah's Family",
+    x: 13,
+    y: 9,
+    robe: "#8f6b30",
+    hair: "#4d3425",
+    lines: [
+      "Family member: Noah, the town feels more troubled each day.",
+      "Family member: I hear shouting near the market again. I do not know what will happen next.",
+    ],
+  },
+];
+
+const inspectables = [
+  { id: "altar", x: 18, y: 10, text: "The altar is quiet, set apart from the noise of the settlement." },
+  { id: "home", x: 16, y: 1, text: "Noah's family tent is simple and orderly, set apart from the town's noise." },
+  { id: "well", x: 24, y: 8, text: "The well should serve everyone, but people argue and push for their own turn." },
+];
+
+const phase2Actions = [
+  {
+    mapId: "forest",
+    type: "wood",
+    label: "Cut gopher wood",
+    tiles: [
+      [10, 4],
+      [11, 4],
+      [16, 4],
+      [17, 4],
+      [9, 10],
+      [10, 10],
+      [15, 10],
+      [16, 10],
+    ],
+  },
+  {
+    mapId: "pitch",
+    type: "pitch",
+    label: "Prepare pitch",
+    tiles: [
+      [12, 4],
+      [13, 4],
+      [14, 4],
+      [12, 10],
+      [13, 10],
+      [14, 10],
+    ],
+  },
+  {
+    mapId: "supplies",
+    type: "food",
+    label: "Pack food stores",
+    tiles: [
+      [7, 7],
+      [8, 7],
+      [18, 7],
+      [19, 7],
+      [10, 10],
+      [15, 10],
+    ],
+  },
+  {
+    mapId: "worksite",
+    type: "build",
+    label: "Assemble ark frame",
+    tiles: [
+      [11, 4],
+      [12, 4],
+      [13, 4],
+      [14, 4],
+      [15, 4],
+      [16, 4],
+      [11, 7],
+      [12, 7],
+      [13, 7],
+      [14, 7],
+      [15, 7],
+      [16, 7],
+    ],
+  },
+];
+
+let gameMode = "title";
+let menuIndex = 0;
+let loadMenuIndex = 0;
+let saveMenuIndex = 0;
+let pauseMenuIndex = 0;
+let dialogQueue = [];
+let dialogOnDone = null;
+let dialogPromptTimer = null;
+let heardTown = new Set();
+let phaseComplete = false;
+let arkCallComplete = false;
+let cutsceneActive = false;
+let cutsceneStartedAt = 0;
+let embarkSceneActive = false;
+let embarkSceneStartedAt = 0;
+let currentMapId = "settlement";
+let materials = { wood: 0, pitch: 0, food: 0 };
+let buildComplete = false;
+let roomsComplete = false;
+let animalsComplete = false;
+let sealComplete = false;
+let finalStoresComplete = false;
+let journeyStarted = false;
+let activeMinigame = null;
+let dragPiece = null;
+let activePointerId = null;
+let hasShownPhase2TravelHint = false;
+let moveCooldown = 0;
+let currentSaveName = defaultSaveName;
+let currentSaveSlot = null;
+let activeModal = null;
+const keys = new Set();
+const dpadPointerButtons = new Map();
+let lastTouchActivationAt = 0;
+
+async function newGame() {
+  const slotIndex = await chooseSlotForNewGame();
+  if (slotIndex === null) {
+    titleHint.textContent = "New game canceled.";
+    return;
+  }
+  currentSaveSlot = slotIndex;
+  const saveName = await promptForSaveName(`Save ${slotIndex + 1}`);
+  if (saveName === null) {
+    titleHint.textContent = "New game canceled.";
+    return;
+  }
+  currentSaveName = saveName;
+  startGame();
+  const result = writeSave();
+  if (!result.ok) setDialog("New game started, but saving failed. Browser storage may be blocked.");
+}
+
+function startGame() {
+  Object.assign(player, playerStart);
+  heardTown = new Set();
+  phaseComplete = false;
+  arkCallComplete = false;
+  cutsceneActive = false;
+  embarkSceneActive = false;
+  currentMapId = "settlement";
+  materials = { wood: 0, pitch: 0, food: 0 };
+  buildComplete = false;
+  roomsComplete = false;
+  animalsComplete = false;
+  sealComplete = false;
+  finalStoresComplete = false;
+  journeyStarted = false;
+  activeMinigame = null;
+  hasShownPhase2TravelHint = false;
+  dialogQueue = [];
+  dialogOnDone = null;
+  gameMode = "play";
+  hideMenus();
+  updateMenuButtonVisibility();
+  setDialog([
+    "Genesis 6: The Wicked World",
+    "You are Noah. Talk to the townspeople and see what the world has become.",
+  ]);
+  updateHud();
+}
+
+function saveGame() {
+  if (gameMode !== "play") return;
+  const result = writeSave(currentSaveSlot);
+  setDialog(result.ok ? `Game saved: ${result.save.saveName}` : "Save failed. Browser storage may be blocked.");
+}
+
+function writeSave(slotIndex = currentSaveSlot) {
+  if (slotIndex === null || slotIndex < 0 || slotIndex >= saveSlotCount) return { ok: false, save: null };
+  const save = {
+    saveName: currentSaveName,
+    player,
+    heardTown: [...heardTown],
+    phaseComplete,
+    arkCallComplete,
+    currentMapId,
+    materials,
+    buildComplete,
+    roomsComplete,
+    animalsComplete,
+    sealComplete,
+    finalStoresComplete,
+    journeyStarted,
+    savedAt: new Date().toISOString(),
+  };
+  const slots = readSaveSlots();
+  slots[slotIndex] = save;
+  const result = writeSaveSlots(slots);
+  if (result.ok) currentSaveSlot = slotIndex;
+  return { ...result, save };
+}
+
+function loadGame(slotIndex = loadMenuIndex) {
+  const slots = readSaveSlots();
+  const save = normalizeSave(slots[slotIndex]);
+  if (!save) {
+    loadHint.textContent = `Slot ${slotIndex + 1} is empty.`;
+    renderLoadSlots();
+    return;
+  }
+  currentSaveSlot = slotIndex;
+  currentSaveName = save.saveName;
+  Object.assign(player, playerStart, save.player);
+  heardTown = new Set(save.heardTown);
+  phaseComplete = Boolean(save.phaseComplete);
+  arkCallComplete = Boolean(save.arkCallComplete);
+  cutsceneActive = false;
+  embarkSceneActive = false;
+  currentMapId = save.currentMapId;
+  materials = { ...save.materials };
+  buildComplete = Boolean(save.buildComplete);
+  roomsComplete = Boolean(save.roomsComplete);
+  animalsComplete = Boolean(save.animalsComplete);
+  sealComplete = Boolean(save.sealComplete);
+  finalStoresComplete = Boolean(save.finalStoresComplete);
+  journeyStarted = Boolean(save.journeyStarted);
+  activeMinigame = null;
+  hasShownPhase2TravelHint = false;
+  gameMode = "play";
+  hideMenus();
+  updateMenuButtonVisibility();
+  setDialog(`Loaded "${save.saveName}".`);
+  updateHud();
+}
+
+function hideMenus() {
+  titleScreen.style.display = "none";
+  loadScreen.style.display = "none";
+  optionsScreen.style.display = "none";
+  pauseScreen.style.display = "none";
+  saveScreen.style.display = "none";
+}
+
+function promptForSaveName(fallback) {
+  return openTextModal({
+    kicker: "Save Slot",
+    title: "Name Save",
+    message: "Choose a short name for this save.",
+    value: fallback || defaultSaveName,
+    confirmText: "Save Name",
+  });
+}
+
+function cleanSaveName(entered, fallback) {
+  const trimmed = (entered || "").trim();
+  return trimmed.slice(0, 32) || fallback || defaultSaveName;
+}
+
+async function renameSaveSlot(slotIndex) {
+  const slots = readSaveSlots();
+  const save = normalizeSave(slots[slotIndex]);
+  if (!save) {
+    loadHint.textContent = "That slot is empty.";
+    return;
+  }
+  const saveName = await promptForSaveName(save.saveName);
+  if (saveName === null) {
+    loadHint.textContent = "Rename canceled.";
+    return;
+  }
+  save.saveName = saveName;
+  slots[slotIndex] = save;
+  const result = writeSaveSlots(slots);
+  if (!result.ok) {
+    loadHint.textContent = "Save could not be renamed.";
+    return;
+  }
+  if (currentSaveSlot === slotIndex) currentSaveName = save.saveName;
+  loadHint.textContent = `Renamed slot ${slotIndex + 1}.`;
+  renderLoadSlots();
+}
+
+async function deleteSaveSlot(slotIndex) {
+  const slots = readSaveSlots();
+  const save = normalizeSave(slots[slotIndex]);
+  if (!save) {
+    loadHint.textContent = "That slot is empty.";
+    return;
+  }
+  const confirmed = await openConfirmModal({
+    kicker: "Delete Save",
+    title: "Delete Save?",
+    message: `Delete slot ${slotIndex + 1}: "${save.saveName}"? This cannot be undone.`,
+    confirmText: "Delete",
+  });
+  if (!confirmed) {
+    loadHint.textContent = "Delete canceled.";
+    return;
+  }
+  slots[slotIndex] = null;
+  const result = writeSaveSlots(slots);
+  if (!result.ok) {
+    loadHint.textContent = "Save could not be deleted.";
+    return;
+  }
+  if (currentSaveSlot === slotIndex) {
+    currentSaveSlot = null;
+    currentSaveName = defaultSaveName;
+  }
+  loadHint.textContent = `Deleted slot ${slotIndex + 1}.`;
+  renderLoadSlots();
+}
+
+function chooseSlotForNewGame() {
+  const slots = readSaveSlots();
+  const emptyIndex = slots.findIndex((save) => !normalizeSave(save));
+  if (emptyIndex !== -1) return emptyIndex;
+  return openSlotChoiceModal({
+    kicker: "New Game",
+    title: "Choose Slot",
+    message: "All save slots are full. Choose one to overwrite.",
+    slots,
+  });
+}
+
+function readSaveSlots() {
+  try {
+    const raw = localStorage.getItem(saveKey);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) return normalizeSlots(parsed);
+    }
+    const legacyRaw = localStorage.getItem(legacySaveKey);
+    if (legacyRaw) {
+      const legacySave = normalizeSave(JSON.parse(legacyRaw));
+      if (legacySave) return normalizeSlots([legacySave, null, null, null]);
+    }
+    return normalizeSlots([]);
+  } catch {
+    return normalizeSlots([]);
+  }
+}
+
+function writeSaveSlots(slots) {
+  try {
+    localStorage.setItem(saveKey, JSON.stringify(normalizeSlots(slots)));
+    return { ok: true };
+  } catch {
+    return { ok: false };
+  }
+}
+
+function normalizeSlots(slots) {
+  return Array.from({ length: saveSlotCount }, (_, index) => normalizeSave(slots[index]));
+}
+
+function normalizeSave(save) {
+  if (!save || typeof save !== "object") return null;
+  const loadedPlayer = save.player || {};
+  const arkCallComplete = Boolean(save.arkCallComplete);
+  const phaseComplete = Boolean(save.phaseComplete) || arkCallComplete;
+  const savedMapId = getMigratedMapId(save.currentMapId, arkCallComplete);
+  const fallbackPlayer = savedMapId === "settlement" ? playerStart : phase2Start;
+  const x = Number.isInteger(loadedPlayer.x) ? loadedPlayer.x : fallbackPlayer.x;
+  const y = Number.isInteger(loadedPlayer.y) ? loadedPlayer.y : fallbackPlayer.y;
+  const facing = ["up", "down", "left", "right"].includes(loadedPlayer.facing) ? loadedPlayer.facing : playerStart.facing;
+  const canUseSavedPosition = isValidSavedPosition(x, y, savedMapId);
+  const allowedEvidence = new Set(townspeople.map((npc) => npc.evidence).filter(Boolean));
+  const heardTown = Array.isArray(save.heardTown)
+    ? save.heardTown.filter((item) => allowedEvidence.has(item))
+    : [];
+  return {
+    saveName: typeof save.saveName === "string" && save.saveName.trim() ? save.saveName.trim().slice(0, 32) : defaultSaveName,
+    player: canUseSavedPosition ? { x, y, facing } : { ...fallbackPlayer },
+    heardTown,
+    phaseComplete,
+    arkCallComplete,
+    currentMapId: savedMapId,
+    materials: normalizeMaterials(save.materials),
+    buildComplete: Boolean(save.buildComplete),
+    roomsComplete: Boolean(save.roomsComplete),
+    animalsComplete: Boolean(save.animalsComplete),
+    sealComplete: Boolean(save.sealComplete),
+    finalStoresComplete: Boolean(save.finalStoresComplete),
+    journeyStarted: Boolean(save.journeyStarted),
+    savedAt: typeof save.savedAt === "string" ? save.savedAt : "unknown time",
+  };
+}
+
+function getMigratedMapId(mapId, hasArkCall) {
+  if (phase2Maps[mapId]) return mapId;
+  return hasArkCall ? "worksite" : "settlement";
+}
+
+function isValidSavedPosition(x, y, mapId) {
+  if (x < 0 || y < 0 || x >= cols || y >= rows) return false;
+  const map = phase2Maps[mapId] || phase2Maps.settlement;
+  if (blockedTiles.has(map.rows[y][x])) return false;
+  if (mapId === "settlement" && townspeople.some((npc) => npc.x === x && npc.y === y)) return false;
+  return true;
+}
+
+function normalizeMaterials(value) {
+  const raw = value && typeof value === "object" ? value : {};
+  return {
+    wood: clampNumber(raw.wood, 0, requiredMaterials.wood),
+    pitch: clampNumber(raw.pitch, 0, requiredMaterials.pitch),
+    food: clampNumber(raw.food, 0, requiredMaterials.food),
+  };
+}
+
+function clampNumber(value, min, max) {
+  const number = Number.isFinite(value) ? value : Number.parseInt(value, 10);
+  if (!Number.isFinite(number)) return min;
+  return Math.max(min, Math.min(max, Math.floor(number)));
+}
+
+function updateMenuButtonVisibility() {
+  topMenuBtn.style.display = gameMode === "play" || gameMode === "pause" ? "block" : "none";
+}
+
+function showTitle() {
+  gameMode = "title";
+  titleScreen.style.display = "flex";
+  loadScreen.style.display = "none";
+  optionsScreen.style.display = "none";
+  pauseScreen.style.display = "none";
+  saveScreen.style.display = "none";
+  hideDialogBox();
+  renderTitleSelection();
+  updateMenuButtonVisibility();
+  updateHud();
+}
+
+function showLoad() {
+  gameMode = "load";
+  titleScreen.style.display = "none";
+  loadScreen.style.display = "flex";
+  optionsScreen.style.display = "none";
+  pauseScreen.style.display = "none";
+  saveScreen.style.display = "none";
+  loadHint.textContent = "Choose a save slot.";
+  loadMenuIndex = firstFilledSlotIndex();
+  renderLoadSlots();
+  updateMenuButtonVisibility();
+  updateHud();
+}
+
+function firstFilledSlotIndex() {
+  const slots = readSaveSlots();
+  const index = slots.findIndex((save) => normalizeSave(save));
+  return index === -1 ? 0 : index;
+}
+
+function showOptions() {
+  gameMode = "options";
+  titleScreen.style.display = "none";
+  loadScreen.style.display = "none";
+  optionsScreen.style.display = "flex";
+  pauseScreen.style.display = "none";
+  saveScreen.style.display = "none";
+  updateMenuButtonVisibility();
+  updateHud();
+}
+
+function openPauseMenu() {
+  if (gameMode !== "play") return;
+  gameMode = "pause";
+  pauseMenuIndex = 0;
+  pauseHint.textContent = "Escape closes this menu.";
+  pauseScreen.style.display = "flex";
+  saveScreen.style.display = "none";
+  renderPauseSelection();
+  updateMenuButtonVisibility();
+  updateHud();
+}
+
+function closePauseMenu() {
+  if (gameMode !== "pause" && gameMode !== "save") return;
+  gameMode = "play";
+  pauseScreen.style.display = "none";
+  saveScreen.style.display = "none";
+  updateMenuButtonVisibility();
+  updateHud();
+}
+
+function openSaveSlotMenu() {
+  if (gameMode !== "pause") return;
+  gameMode = "save";
+  saveMenuIndex = currentSaveSlot ?? firstFilledSlotIndex();
+  pauseScreen.style.display = "none";
+  saveScreen.style.display = "flex";
+  saveHint.textContent = "Choose a slot. Filled slots will be overwritten.";
+  renderSaveSlots();
+  updateHud();
+}
+
+function saveToSlot(slotIndex = saveMenuIndex) {
+  if (gameMode !== "save") return;
+  const result = writeSave(slotIndex);
+  if (result.ok) {
+    saveHint.textContent = `Saved "${result.save.saveName}" to slot ${slotIndex + 1}.`;
+    renderSaveSlots();
+    renderLoadSlots();
+  } else {
+    saveHint.textContent = "Save failed. Browser storage may be blocked.";
+  }
+}
+
+function backToPauseMenu() {
+  if (gameMode !== "save") return;
+  gameMode = "pause";
+  saveScreen.style.display = "none";
+  pauseScreen.style.display = "flex";
+  renderPauseSelection();
+  updateHud();
+}
+
+function activatePauseMenu() {
+  const action = ["resume", "save", "title"][pauseMenuIndex];
+  if (action === "resume") closePauseMenu();
+  if (action === "save") openSaveSlotMenu();
+  if (action === "title") showTitle();
+}
+
+function renderTitleSelection() {
+  const options = [...document.querySelectorAll("[data-menu-action]")];
+  options.forEach((button, index) => button.classList.toggle("selected", index === menuIndex));
+}
+
+function renderPauseSelection() {
+  const options = [...document.querySelectorAll("[data-pause-action]")];
+  options.forEach((button, index) => button.classList.toggle("selected", index === pauseMenuIndex));
+}
+
+function renderLoadSlots() {
+  const slots = readSaveSlots();
+  loadSlotList.innerHTML = "";
+  slots.forEach((slot, index) => {
+    const save = normalizeSave(slot);
+    const row = document.createElement("div");
+    row.className = "slot-row";
+    row.classList.toggle("selected", index === loadMenuIndex);
+
+    const loadButton = document.createElement("button");
+    loadButton.className = "title-option slot-option";
+    loadButton.classList.toggle("selected", index === loadMenuIndex);
+    loadButton.dataset.loadSlot = String(index);
+    loadButton.innerHTML = save
+      ? `<span>Slot ${index + 1}</span><span>${escapeHtml(save.saveName)}</span><span>${escapeHtml(formatSavedAt(save.savedAt))}</span>`
+      : `<span>Slot ${index + 1}</span><span>Empty</span><span></span>`;
+    loadButton.disabled = !save;
+    row.appendChild(loadButton);
+
+    if (save) {
+      const renameButton = document.createElement("button");
+      renameButton.className = "slot-tool";
+      renameButton.dataset.renameSlot = String(index);
+      renameButton.textContent = "Name";
+      row.appendChild(renameButton);
+
+      const deleteButton = document.createElement("button");
+      deleteButton.className = "slot-tool danger";
+      deleteButton.dataset.deleteSlot = String(index);
+      deleteButton.textContent = "Delete";
+      row.appendChild(deleteButton);
+    }
+
+    loadSlotList.appendChild(row);
+  });
+}
+
+function renderSaveSlots() {
+  const slots = readSaveSlots();
+  saveSlotList.innerHTML = "";
+  slots.forEach((slot, index) => {
+    const save = normalizeSave(slot);
+    const button = document.createElement("button");
+    button.className = "title-option";
+    button.classList.toggle("selected", index === saveMenuIndex);
+    button.dataset.saveSlot = String(index);
+    button.classList.add("slot-option");
+    button.innerHTML = save
+      ? `<span>Slot ${index + 1}</span><span>Overwrite - ${escapeHtml(save.saveName)}</span><span>${escapeHtml(formatSavedAt(save.savedAt))}</span>`
+      : `<span>Slot ${index + 1}</span><span>Empty</span><span></span>`;
+    saveSlotList.appendChild(button);
+  });
+}
+
+function formatSavedAt(savedAt) {
+  const date = new Date(savedAt);
+  if (Number.isNaN(date.getTime())) return savedAt || "unknown time";
+  return date.toLocaleString([], {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
+function escapeHtml(value) {
+  return String(value)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
+function openTextModal({ kicker, title, message, value, confirmText }) {
+  return new Promise((resolve) => {
+    showModalShell({ kicker, title, message, confirmText, showInput: true });
+    modalInput.value = value || "";
+    activeModal = {
+      resolve: (result) => {
+        hideModalShell();
+        resolve(result === null ? null : cleanSaveName(result, value));
+      },
+      type: "text",
+    };
+    requestAnimationFrame(() => {
+      modalInput.focus();
+      modalInput.select();
+    });
+  });
+}
+
+function openConfirmModal({ kicker, title, message, confirmText }) {
+  return new Promise((resolve) => {
+    showModalShell({ kicker, title, message, confirmText, showInput: false });
+    activeModal = {
+      resolve: (result) => {
+        hideModalShell();
+        resolve(Boolean(result));
+      },
+      type: "confirm",
+    };
+    modalConfirm.focus();
+  });
+}
+
+function openSlotChoiceModal({ kicker, title, message, slots }) {
+  return new Promise((resolve) => {
+    showModalShell({ kicker, title, message, confirmText: "", showInput: false, showConfirm: false });
+    slots.forEach((slot, index) => {
+      const save = normalizeSave(slot);
+      const button = document.createElement("button");
+      button.className = "title-option slot-option";
+      button.dataset.modalSlot = String(index);
+      button.innerHTML = save
+        ? `<span>Slot ${index + 1}</span><span>Overwrite - ${escapeHtml(save.saveName)}</span><span>${escapeHtml(formatSavedAt(save.savedAt))}</span>`
+        : `<span>Slot ${index + 1}</span><span>Empty</span><span></span>`;
+      modalOptions.appendChild(button);
+    });
+    activeModal = {
+      resolve: (result) => {
+        hideModalShell();
+        resolve(Number.isInteger(result) ? result : null);
+      },
+      type: "slot",
+    };
+    const firstSlotButton = modalOptions.querySelector("button");
+    if (firstSlotButton) firstSlotButton.focus();
+  });
+}
+
+function showModalShell({ kicker, title, message, confirmText, showInput, showConfirm = true }) {
+  modalKicker.textContent = kicker || "";
+  modalTitle.textContent = title || "";
+  modalMessage.textContent = message || "";
+  modalOptions.innerHTML = "";
+  modalInput.style.display = showInput ? "block" : "none";
+  modalConfirm.style.display = showConfirm ? "block" : "none";
+  modalConfirm.textContent = confirmText || "OK";
+  modalCancel.textContent = "Cancel";
+  modalScreen.style.display = "flex";
+}
+
+function hideModalShell() {
+  modalScreen.style.display = "none";
+  modalInput.value = "";
+  modalOptions.innerHTML = "";
+  activeModal = null;
+}
+
+function confirmActiveModal() {
+  if (!activeModal) return;
+  if (activeModal.type === "text") {
+    activeModal.resolve(modalInput.value);
+    return;
+  }
+  activeModal.resolve(true);
+}
+
+function cancelActiveModal() {
+  if (!activeModal) return;
+  activeModal.resolve(null);
+}
+
+function setDialog(lines, onDone = null) {
+  clearDialogPromptTimer();
+  dialogQueue = Array.isArray(lines) ? [...lines] : [lines];
+  dialogOnDone = typeof onDone === "function" ? onDone : null;
+  showDialogLine(dialogQueue.shift() || "");
+  dialogBox.classList.remove("waiting");
+  dialogBox.style.display = "block";
+  document.body.classList.add("dialog-visible");
+  scheduleDialogPrompt();
+}
+
+function advanceDialog() {
+  clearDialogPromptTimer();
+  if (dialogQueue.length > 0) {
+    showDialogLine(dialogQueue.shift());
+    dialogBox.classList.remove("waiting");
+    scheduleDialogPrompt();
+  } else {
+    dialogBox.style.display = "none";
+    dialogBox.classList.remove("waiting");
+    dialogBox.removeAttribute("data-speaker");
+    document.body.classList.remove("dialog-visible");
+    const onDone = dialogOnDone;
+    dialogOnDone = null;
+    if (onDone) onDone();
+  }
+}
+
+function hideDialogBox() {
+  dialogBox.style.display = "none";
+  dialogBox.classList.remove("waiting");
+  dialogBox.removeAttribute("data-speaker");
+  document.body.classList.remove("dialog-visible");
+}
+
+function showDialogLine(line) {
+  const parsed = parseDialogSpeaker(line);
+  dialogBox.textContent = parsed.text;
+  if (parsed.speaker) {
+    dialogBox.dataset.speaker = parsed.speaker;
+  } else {
+    dialogBox.removeAttribute("data-speaker");
+  }
+}
+
+function parseDialogSpeaker(line) {
+  const text = String(line || "");
+  const match = text.match(/^([A-Za-z][A-Za-z ]{1,24}):\s+(.+)$/);
+  const knownSpeakers = new Set(["God", "Noah", "Mocker", "Angry man", "Merchant", "Proud man", "Family member"]);
+  if (!match || !knownSpeakers.has(match[1])) return { speaker: "", text };
+  return { speaker: match[1], text: match[2] };
+}
+
+function scheduleDialogPrompt() {
+  dialogPromptTimer = window.setTimeout(() => {
+    if (dialogBox.style.display !== "none") dialogBox.classList.add("waiting");
+  }, dialogPromptDelay);
+}
+
+function clearDialogPromptTimer() {
+  if (dialogPromptTimer) {
+    window.clearTimeout(dialogPromptTimer);
+    dialogPromptTimer = null;
+  }
+}
+
+function updateHud() {
+  if (screenStatus[gameMode]) {
+    setStatus(screenStatus[gameMode]);
+    return;
+  }
+
+  if (gameMode === "pause") {
+    setStatus({
+      primary: "Paused",
+      secondary: "Save, resume, or return to the main menu.",
+      progress: getProgressText(),
+    });
+    return;
+  }
+
+  if (gameMode === "save") {
+    setStatus({
+      primary: "Save Progress",
+      secondary: "Choose a slot. Filled slots will be overwritten.",
+      progress: getProgressText(),
+    });
+    return;
+  }
+
+  const questText = getQuestText();
+  setStatus({
+    primary: getPrimaryStatusText(),
+    secondary: `Quest: ${questText}`,
+    progress: getProgressText(),
+  });
+}
+
+function getQuestText() {
+  if (journeyStarted) return "The ark journey has begun";
+  if (finalStoresComplete) return "Enter the ark";
+  if (sealComplete) return "Load final stores into the ark";
+  if (animalsComplete) return "Seal the ark with pitch";
+  if (roomsComplete) return "Sort clean and unclean animal pairs";
+  if (buildComplete) return "Build rooms inside the ark";
+  if (arkCallComplete && hasAllMaterials()) {
+    return "Return to the worksite and assemble the ark";
+  }
+  if (arkCallComplete && !activeMinigame) {
+    return "Gather wood, pitch, and food stores";
+  }
+  if (arkCallComplete) {
+    return phaseStatus.quest.complete;
+  }
+  if (phaseComplete) {
+    return "Listen to God's command";
+  }
+  if (heardTown.size < phaseStatus.progressTotal) {
+    return phaseStatus.quest.active;
+  }
+  return "Return home so Noah can pray and listen";
+}
+
+function getPrimaryStatusText() {
+  if (arkCallComplete) return "Genesis 6:14-22 - Preparing the Ark";
+  if (phaseComplete) return "Genesis 6: God Calls Noah";
+  return `${phaseStatus.bibleReference}: ${phaseStatus.name}`;
+}
+
+function getProgressText() {
+  if (journeyStarted) return "Journey: Beginning";
+  if (finalStoresComplete) return "Stores: Loaded | Door: Ready";
+  if (sealComplete) return "Pitch Seal: Complete | Stores: Needed";
+  if (animalsComplete) return "Animals: Sorted | Pitch Seal: Needed";
+  if (roomsComplete) return "Rooms: Complete | Animals: Ready";
+  if (buildComplete) return "Ark Frame: Complete | Rooms: Needed";
+  if (arkCallComplete) return `Wood ${materials.wood}/${requiredMaterials.wood} | Pitch ${materials.pitch}/${requiredMaterials.pitch} | Food ${materials.food}/${requiredMaterials.food}`;
+  if (phaseComplete) return "Ark Plan: Listening";
+  return `${phaseStatus.progressLabel}: ${heardTown.size}/${phaseStatus.progressTotal}`;
+}
+
+function renderMaterialProgress() {
+  statusProgressEl.innerHTML = `
+    <div class="material-grid">
+      <div class="material-cell"><span class="material-name">Wood</span><span class="material-count">${materials.wood}/${requiredMaterials.wood}</span></div>
+      <div class="material-cell"><span class="material-name">Pitch</span><span class="material-count">${materials.pitch}/${requiredMaterials.pitch}</span></div>
+      <div class="material-cell"><span class="material-name">Food</span><span class="material-count">${materials.food}/${requiredMaterials.food}</span></div>
+    </div>
+  `;
+}
+
+function hasAllMaterials() {
+  return materials.wood >= requiredMaterials.wood && materials.pitch >= requiredMaterials.pitch && materials.food >= requiredMaterials.food;
+}
+
+function setStatus({ primary, secondary, progress }) {
+  statusPrimaryEl.textContent = primary;
+  statusSecondaryEl.textContent = secondary;
+  if (gameMode === "play" && arkCallComplete && !buildComplete) {
+    renderMaterialProgress();
+  } else {
+    statusProgressEl.textContent = progress;
+  }
+}
+
+function tileAt(x, y) {
+  if (x < 0 || y < 0 || x >= cols || y >= rows) return TILE.water;
+  return activeMapRows()[y][x] || TILE.sand;
+}
+
+function activeMapRows() {
+  return (phase2Maps[currentMapId] || phase2Maps.settlement).rows;
+}
+
+function isBlocked(x, y) {
+  if (blockedTiles.has(tileAt(x, y))) return true;
+  return currentMapId === "settlement" && townspeople.some((npc) => npc.x === x && npc.y === y);
+}
+
+function facingTile() {
+  const pos = { x: player.x, y: player.y };
+  if (player.facing === "up") pos.y -= 1;
+  if (player.facing === "down") pos.y += 1;
+  if (player.facing === "left") pos.x -= 1;
+  if (player.facing === "right") pos.x += 1;
+  return pos;
+}
+
+function tryMove(dx, dy, facing) {
+  player.facing = facing;
+  const nx = player.x + dx;
+  const ny = player.y + dy;
+  if (tryMapExit(nx, ny)) return;
+  if (!isBlocked(nx, ny)) {
+    player.x = nx;
+    player.y = ny;
+  }
+}
+
+function tryMapExit(nx, ny) {
+  const map = phase2Maps[currentMapId] || phase2Maps.settlement;
+  let exit = null;
+  if (nx < 0) exit = map.exits.left;
+  if (nx >= cols) exit = map.exits.right;
+  if (ny < 0) exit = map.exits.up;
+  if (ny >= rows) exit = map.exits.down;
+  if (!exit) return false;
+  currentMapId = exit.to;
+  player.x = exit.x;
+  player.y = exit.y;
+  player.facing = exit.facing;
+  if (!hasShownPhase2TravelHint) {
+    hasShownPhase2TravelHint = true;
+    setDialog(`${phase2Maps[currentMapId].name}\nUse the paths at the edge to travel between ark work areas.`);
+  }
+  updateHud();
+  return true;
+}
+
+function interact() {
+  if (dialogBox.style.display !== "none") {
+    advanceDialog();
+    return;
+  }
+
+  const target = facingTile();
+  const phase2Action = findPhase2Action(target.x, target.y);
+  if (phase2Action) {
+    handlePhase2Action(phase2Action);
+    return;
+  }
+
+  const npc = currentMapId === "settlement" ? townspeople.find((item) => item.x === target.x && item.y === target.y) : null;
+  if (npc) {
+    const heardBefore = heardTown.size;
+    if (npc.evidence) heardTown.add(npc.evidence);
+    const lines = [...npc.lines];
+    if (heardBefore < phaseStatus.progressTotal && heardTown.size >= phaseStatus.progressTotal) {
+      lines.push("Quest: Return to Noah's home at the top of the settlement. Stand by the family tent and press Space.");
+    }
+    setDialog(lines);
+    updateHud();
+    return;
+  }
+
+  if (heardTown.size >= phaseStatus.progressTotal && !arkCallComplete && target.x >= 14 && target.x <= 18 && target.y >= 0 && target.y <= 3) {
+    phaseComplete = true;
+    startArkCallCutscene();
+    updateHud();
+    return;
+  }
+
+  const sign = currentMapId === "settlement" ? inspectables.find((item) => item.x === target.x && item.y === target.y) : null;
+  if (sign) {
+    setDialog(sign.text);
+    return;
+  }
+
+  const tile = tileAt(target.x, target.y);
+  if (blockedTiles.has(tile)) setDialog(describeTile(tile));
+}
+
+function findPhase2Action(x, y) {
+  if (currentMapId === "settlement") return null;
+  return phase2Actions.find((action) => action.mapId === currentMapId && action.tiles.some(([tx, ty]) => tx === x && ty === y));
+}
+
+function handlePhase2Action(action) {
+  if (action.type === "wood") {
+    if (materials.wood >= requiredMaterials.wood) {
+      setDialog("Enough gopher wood has been cut for this stage. Return to the worksite or gather the other materials.");
+      return;
+    }
+    startMaterialMinigame("wood");
+    return;
+  }
+  if (action.type === "pitch") {
+    if (materials.pitch >= requiredMaterials.pitch) {
+      setDialog("Enough pitch has been prepared for this stage. It will help seal the ark inside and outside.");
+      return;
+    }
+    startMaterialMinigame("pitch");
+    return;
+  }
+  if (action.type === "food") {
+    if (materials.food >= requiredMaterials.food) {
+      setDialog("Enough food stores have been packed for this stage. Return to the worksite when the other supplies are ready.");
+      return;
+    }
+    startMaterialMinigame("food");
+    return;
+  }
+  if (action.type === "build") {
+    if (journeyStarted) {
+      setDialog("The ark is ready, and Noah's family has entered. The journey is beginning.");
+      return;
+    }
+    if (finalStoresComplete) {
+      startEmbarkScene();
+      return;
+    }
+    if (sealComplete) {
+      startFinalStoresMinigame();
+      return;
+    }
+    if (animalsComplete) {
+      startSealMinigame();
+      return;
+    }
+    if (roomsComplete) {
+      startAnimalMinigame();
+      return;
+    }
+    if (buildComplete) {
+      startRoomsMinigame();
+      return;
+    }
+    if (!hasAllMaterials()) {
+      setDialog([
+        "The ark frame site is ready, but Noah still needs more materials.",
+        `Needed: wood ${materials.wood}/${requiredMaterials.wood}, pitch ${materials.pitch}/${requiredMaterials.pitch}, food ${materials.food}/${requiredMaterials.food}.`,
+      ]);
+      return;
+    }
+    startBuildMinigame();
+  }
+}
+
+function startArkCallCutscene() {
+  cutsceneActive = true;
+  cutsceneStartedAt = performance.now();
+  player.x = 16;
+  player.y = 3;
+  player.facing = "up";
+  setDialog(
+    [
+      "Noah has seen the violence, pride, dishonesty, and mocking of the people.",
+      "Noah: The earth is filled with corruption, but I will keep walking with God.",
+      ...arkCallCutsceneLines,
+    ],
+    () => {
+      arkCallComplete = true;
+      cutsceneActive = false;
+      transitionToPhase2Worksite();
+      updateHud();
+      writeSave();
+    }
+  );
+}
+
+function transitionToPhase2Worksite() {
+  currentMapId = "worksite";
+  Object.assign(player, phase2Start);
+  setDialog([
+    "Morning comes at a wide building site outside the settlement.",
+    "Noah marks the ground with stakes and measuring cords. The ark is not built yet; this is only the planned building place.",
+    "Paths lead to the gopher wood grove, the pitch pits, and the food store tents.",
+    "Gather enough materials, then return to the marked center site to raise the first ark frame.",
+  ]);
+}
+
+function describeTile(tile) {
+  if (currentMapId === "pitch" && (tile === TILE.altar || tile === TILE.fire)) {
+    return "A dark pitch pit bubbles slowly. Use the marked work spots to prepare pitch safely.";
+  }
+  if (currentMapId !== "settlement") {
+    const phase2Descriptions = {
+      [TILE.house]: "This marked work area is part of the ark preparation site.",
+      [TILE.tent]: "Supply tents hold food and water stores for the journey ahead.",
+      [TILE.stone]: "Flat stones mark the planned ark foundation area.",
+      [TILE.tree]: "Tall trees grow here. Some can be worked into gopher wood.",
+      [TILE.market]: "A supply table is set up for careful packing.",
+      [TILE.jar]: "Clay jars wait to be sorted into food and water stores.",
+      [TILE.cart]: "A cart stands ready to carry supplies back to the ark site.",
+      [TILE.water]: "The path does not continue this way.",
+    };
+    return phase2Descriptions[tile] || "This area is prepared for the ark work.";
+  }
+  const descriptions = {
+    [TILE.house]: "Noah's family tent is plain, peaceful, and set apart from the noisy settlement.",
+    [TILE.tent]: "A woven tent made from cloth and poles blocks the way.",
+    [TILE.stone]: "Flat stones form a small public court where people gather.",
+    [TILE.altar]: "A stone altar stands apart from the wicked town.",
+    [TILE.tree]: "Cypress-like trees line the ancient plain.",
+    [TILE.well]: "A stone well sits at the edge of the settlement.",
+    [TILE.fence]: "A rough pen waits for animals in a later phase.",
+    [TILE.market]: "Market tables hold grain, jars, cloth, and unfair scales.",
+    [TILE.water]: "A stream runs through the low ground.",
+    [TILE.jar]: "Clay jars hold grain, oil, and water for daily life.",
+    [TILE.cart]: "A wooden cart carries grain sacks and market goods.",
+    [TILE.cloth]: "Dyed cloth hangs over a market stall.",
+  };
+  return descriptions[tile] || "There is nothing to inspect here.";
+}
+
+function drawTile(tile, x, y) {
+  const px = x * tileSize;
+  const py = y * tileSize;
+
+  if (isLandmarkFootprint(x, y)) {
+    const base = landmarkBaseTile(x, y);
+    ctx.fillStyle = tileColors[base] || tileColors[TILE.sand];
+    ctx.fillRect(px, py, tileSize, tileSize);
+    if (base === TILE.path) drawPath(px, py);
+    if (base === TILE.sand) drawPebbles(px, py);
+    if (base === TILE.grass) drawGrass(px, py);
+    ctx.strokeStyle = "rgba(42, 28, 20, 0.08)";
+    ctx.strokeRect(px, py, tileSize, tileSize);
+    return;
+  }
+
+  ctx.fillStyle = tileColors[tile] || tileColors[TILE.sand];
+  ctx.fillRect(px, py, tileSize, tileSize);
+
+  if (tile === TILE.sand) drawPebbles(px, py);
+  if (tile === TILE.path) drawPath(px, py);
+  if (tile === TILE.field) drawField(px, py);
+  if (tile === TILE.water) drawWater(px, py);
+  if (tile === TILE.grass) drawGrass(px, py);
+  if (tile === TILE.house) drawHouse(px, py);
+  if (tile === TILE.tent) drawTent(px, py);
+  if (tile === TILE.tree) drawTree(px, py);
+  if (tile === TILE.stone) drawStone(px, py);
+  if (tile === TILE.altar) drawAltar(px, py);
+  if (tile === TILE.well) drawWell(px, py);
+  if (tile === TILE.fence) drawFence(px, py);
+  if (tile === TILE.market) drawMarket(px, py);
+  if (tile === TILE.jar) drawJars(px, py);
+  if (tile === TILE.cart) drawCart(px, py);
+  if (tile === TILE.cloth) drawCloth(px, py);
+
+  ctx.strokeStyle = "rgba(42, 28, 20, 0.08)";
+  ctx.strokeRect(px, py, tileSize, tileSize);
+}
+
+function isLandmarkFootprint(x, y) {
+  if (currentMapId !== "settlement") return false;
+  return (
+    inRect(x, y, 14, 0, 5, 3) ||
+    inRect(x, y, 5, 7, 3, 2) ||
+    inRect(x, y, 14, 4, 4, 3) ||
+    inRect(x, y, 17, 10, 2, 2) ||
+    inRect(x, y, 23, 8, 2, 1) ||
+    inRect(x, y, 23, 4, 3, 3) ||
+    inRect(x, y, 0, 10, 3, 3) ||
+    inRect(x, y, 8, 11, 6, 4)
+  );
+}
+
+function landmarkBaseTile(x, y) {
+  if (inRect(x, y, 5, 7, 3, 2) || inRect(x, y, 14, 4, 4, 3)) return TILE.path;
+  if (inRect(x, y, 23, 8, 2, 1)) return TILE.path;
+  if (inRect(x, y, 8, 11, 6, 4)) return TILE.grass;
+  if (inRect(x, y, 23, 4, 3, 3)) return TILE.sand;
+  if (inRect(x, y, 0, 10, 3, 3)) return TILE.sand;
+  return TILE.sand;
+}
+
+function inRect(x, y, rx, ry, w, h) {
+  return x >= rx && x < rx + w && y >= ry && y < ry + h;
+}
+
+function drawLandmarks() {
+  drawNoahHomeLandmark();
+  drawMarketLandmark();
+  drawPublicCourtLandmark();
+  drawWellLandmark();
+  drawAltarLandmark();
+  drawPenLandmark();
+  drawTentClusterLandmark(23, 4, "right");
+  drawTentClusterLandmark(0, 10, "left");
+}
+
+function drawNoahHomeLandmark() {
+  const px = 14 * tileSize;
+  const py = 0;
+  ctx.fillStyle = "rgba(33, 25, 22, 0.22)";
+  ctx.fillRect(px + 14, py + 82, 130, 8);
+
+  ctx.fillStyle = "#6f472f";
+  ctx.fillRect(px + 20, py + 40, 120, 42);
+  ctx.fillStyle = "#9b6742";
+  ctx.fillRect(px + 24, py + 44, 112, 34);
+
+  ctx.fillStyle = "#e7d5ad";
+  ctx.beginPath();
+  ctx.moveTo(px + 80, py + 6);
+  ctx.lineTo(px + 150, py + 43);
+  ctx.lineTo(px + 135, py + 52);
+  ctx.lineTo(px + 25, py + 52);
+  ctx.lineTo(px + 10, py + 43);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.fillStyle = "#b68b5e";
+  ctx.fillRect(px + 22, py + 48, 116, 6);
+  ctx.fillStyle = "#5c4330";
+  ctx.fillRect(px + 69, py + 59, 22, 23);
+  ctx.fillStyle = "#2f2118";
+  ctx.fillRect(px + 84, py + 70, 3, 3);
+  ctx.fillStyle = "#f1d79c";
+  ctx.fillRect(px + 34, py + 60, 16, 10);
+  ctx.fillRect(px + 108, py + 60, 16, 10);
+  ctx.fillStyle = "#4a3022";
+  ctx.fillRect(px + 34, py + 68, 16, 3);
+  ctx.fillRect(px + 108, py + 68, 16, 3);
+  ctx.fillStyle = "#211916";
+  ctx.fillRect(px + 18, py + 53, 124, 3);
+}
+
+function drawMarketLandmark() {
+  const px = 5 * tileSize;
+  const py = 7 * tileSize;
+  ctx.fillStyle = "rgba(33, 25, 22, 0.2)";
+  ctx.fillRect(px + 4, py + 58, 88, 5);
+
+  ctx.fillStyle = "#5b3627";
+  ctx.fillRect(px + 8, py + 28, 80, 30);
+  ctx.fillStyle = "#f0c66e";
+  ctx.fillRect(px + 2, py + 12, 92, 18);
+  const stripes = ["#9e4b38", "#fff4d8", "#9e4b38", "#fff4d8", "#9e4b38"];
+  stripes.forEach((color, index) => {
+    ctx.fillStyle = color;
+    ctx.fillRect(px + 6 + index * 17, py + 12, 14, 18);
+  });
+  ctx.fillStyle = "#211916";
+  ctx.fillRect(px + 8, py + 30, 80, 3);
+  ctx.fillStyle = "#d39a63";
+  ctx.fillRect(px + 16, py + 40, 10, 14);
+  ctx.fillRect(px + 66, py + 38, 12, 16);
+  ctx.fillStyle = "#263d2b";
+  ctx.fillRect(px + 35, py + 43, 14, 9);
+  ctx.fillStyle = "#e7d5ad";
+  ctx.fillRect(px + 52, py + 42, 9, 10);
+}
+
+function drawPublicCourtLandmark() {
+  const px = 14 * tileSize;
+  const py = 4 * tileSize;
+  ctx.fillStyle = "#b8aa8d";
+  ctx.fillRect(px + 4, py + 8, 120, 78);
+  ctx.fillStyle = "#8f8776";
+  for (let y = 14; y < 82; y += 18) {
+    ctx.fillRect(px + 8, py + y, 112, 2);
+  }
+  for (let x = 16; x < 118; x += 26) {
+    ctx.fillRect(px + x, py + 10, 2, 74);
+  }
+  ctx.fillStyle = "#6d675c";
+  ctx.fillRect(px + 14, py + 18, 38, 18);
+  ctx.fillRect(px + 70, py + 46, 36, 18);
+}
+
+function drawWellLandmark() {
+  const px = 23 * tileSize;
+  const py = 8 * tileSize;
+  ctx.fillStyle = "rgba(33, 25, 22, 0.22)";
+  ctx.fillRect(px + 4, py + 28, 54, 4);
+  ctx.fillStyle = "#6d675c";
+  ctx.fillRect(px + 10, py + 7, 44, 8);
+  ctx.fillStyle = "#3b5964";
+  ctx.fillRect(px + 14, py + 15, 36, 15);
+  ctx.fillStyle = "#9bd8df";
+  ctx.fillRect(px + 20, py + 18, 24, 5);
+  ctx.fillStyle = "#4a443d";
+  ctx.fillRect(px + 8, py + 4, 4, 26);
+  ctx.fillRect(px + 52, py + 4, 4, 26);
+  ctx.fillRect(px + 8, py + 4, 48, 4);
+}
+
+function drawAltarLandmark() {
+  const px = 17 * tileSize;
+  const py = 10 * tileSize;
+  ctx.fillStyle = "rgba(33, 25, 22, 0.18)";
+  ctx.fillRect(px + 2, py + 53, 58, 6);
+  ctx.fillStyle = "#5c574f";
+  ctx.fillRect(px + 7, py + 38, 50, 12);
+  ctx.fillRect(px + 15, py + 26, 34, 13);
+  ctx.fillStyle = "#827b70";
+  ctx.fillRect(px + 11, py + 40, 12, 4);
+  ctx.fillRect(px + 31, py + 29, 12, 4);
+  ctx.fillStyle = "#d76b36";
+  ctx.fillRect(px + 29, py + 13, 7, 13);
+  ctx.fillStyle = "#f0c66e";
+  ctx.fillRect(px + 31, py + 9, 3, 6);
+}
+
+function drawPenLandmark() {
+  const px = 8 * tileSize;
+  const py = 11 * tileSize;
+  const width = 6 * tileSize;
+  const height = 4 * tileSize;
+
+  ctx.fillStyle = "#8aaa5f";
+  ctx.fillRect(px + 5, py + 5, width - 10, height - 10);
+  ctx.fillStyle = "rgba(92, 63, 38, 0.22)";
+  ctx.fillRect(px + 24, py + 28, 44, 16);
+  ctx.fillRect(px + 92, py + 65, 54, 18);
+  ctx.fillRect(px + 56, py + 92, 38, 12);
+  ctx.fillStyle = "rgba(255, 244, 216, 0.16)";
+  ctx.fillRect(px + 18, py + 18, 24, 5);
+  ctx.fillRect(px + 72, py + 42, 28, 5);
+  ctx.fillRect(px + 124, py + 26, 22, 5);
+
+  drawFenceRail(px + 8, py + 10, width - 16, "h");
+  drawFenceRail(px + 8, py + height - 18, width - 16, "h");
+  drawFenceRail(px + 8, py + 10, height - 28, "v");
+  drawFenceRail(px + width - 12, py + 10, height - 28, "v");
+
+  ctx.fillStyle = "#3c2a20";
+  const posts = [
+    [8, 8],
+    [56, 8],
+    [104, 8],
+    [152, 8],
+    [8, height - 22],
+    [56, height - 22],
+    [132, height - 22],
+    [width - 16, height - 22],
+    [8, 48],
+    [width - 16, 48],
+    [8, 83],
+    [width - 16, 83],
+  ];
+  posts.forEach(([x, y]) => {
+    ctx.fillRect(px + x, py + y, 8, 18);
+    ctx.fillStyle = "#6b442c";
+    ctx.fillRect(px + x + 2, py + y + 2, 4, 14);
+    ctx.fillStyle = "#3c2a20";
+  });
+
+  ctx.fillStyle = "#9b6742";
+  ctx.fillRect(px + 103, py + height - 20, 30, 6);
+  ctx.fillRect(px + 103, py + height - 11, 30, 5);
+  ctx.fillStyle = "#3c2a20";
+  ctx.fillRect(px + 101, py + height - 23, 5, 20);
+  ctx.fillRect(px + 132, py + height - 23, 5, 20);
+}
+
+function drawFenceRail(x, y, length, direction) {
+  ctx.fillStyle = "#3c2a20";
+  if (direction === "h") {
+    ctx.fillRect(x, y, length, 5);
+    ctx.fillRect(x, y + 13, length, 5);
+    ctx.fillStyle = "#8b5b3e";
+    ctx.fillRect(x + 2, y + 1, length - 4, 2);
+    ctx.fillRect(x + 2, y + 14, length - 4, 2);
+  } else {
+    ctx.fillRect(x, y, 5, length);
+    ctx.fillRect(x + 13, y, 5, length);
+    ctx.fillStyle = "#8b5b3e";
+    ctx.fillRect(x + 1, y + 2, 2, length - 4);
+    ctx.fillRect(x + 14, y + 2, 2, length - 4);
+  }
+}
+
+function drawTentClusterLandmark(tx, ty, side) {
+  const px = tx * tileSize;
+  const py = ty * tileSize;
+  const flip = side === "right" ? 1 : -1;
+  const originX = side === "right" ? px : px + 96;
+  drawLargeTent(originX, py + 5, flip, "#f4dfae", "#8b5b3e");
+  drawSmallTent(originX + flip * 46, py + 43, flip, "#dcc48d", "#745139");
+  drawSmallTent(originX + flip * 10, py + 54, flip, "#ead393", "#6f472f");
+}
+
+function drawLargeTent(px, py, flip, canvasColor, trimColor) {
+  ctx.fillStyle = "rgba(33, 25, 22, 0.18)";
+  ctx.fillRect(px - (flip < 0 ? 78 : 0), py + 62, 78, 5);
+  ctx.fillStyle = canvasColor;
+  ctx.beginPath();
+  ctx.moveTo(px, py);
+  ctx.lineTo(px + flip * 70, py + 66);
+  ctx.lineTo(px + flip * 8, py + 66);
+  ctx.closePath();
+  ctx.fill();
+  ctx.fillStyle = trimColor;
+  ctx.fillRect(px + flip * 25, py + 42, flip * 12, 24);
+  ctx.fillRect(px + flip * 6, py + 64, flip * 54, 3);
+}
+
+function drawSmallTent(px, py, flip, canvasColor, trimColor) {
+  ctx.fillStyle = canvasColor;
+  ctx.beginPath();
+  ctx.moveTo(px, py);
+  ctx.lineTo(px + flip * 38, py + 41);
+  ctx.lineTo(px + flip * 5, py + 41);
+  ctx.closePath();
+  ctx.fill();
+  ctx.fillStyle = trimColor;
+  ctx.fillRect(px + flip * 15, py + 26, flip * 8, 15);
+}
+
+function drawPebbles(px, py) {
+  ctx.fillStyle = "rgba(92, 63, 38, 0.18)";
+  ctx.fillRect(px + 6, py + 8, 3, 2);
+  ctx.fillRect(px + 21, py + 22, 4, 2);
+}
+
+function drawPath(px, py) {
+  ctx.fillStyle = "rgba(87, 58, 38, 0.2)";
+  ctx.fillRect(px + 4, py + 5, 5, 5);
+  ctx.fillRect(px + 19, py + 21, 6, 4);
+}
+
+function drawField(px, py) {
+  ctx.fillStyle = "#e4ca64";
+  for (let i = 5; i < 30; i += 8) ctx.fillRect(px + i, py + 4, 3, 24);
+  ctx.fillStyle = "#7c7137";
+  ctx.fillRect(px + 2, py + 27, 28, 2);
+}
+
+function drawWater(px, py) {
+  ctx.fillStyle = "#9bd8df";
+  ctx.fillRect(px + 4, py + 10, 12, 3);
+  ctx.fillRect(px + 16, py + 20, 10, 3);
+}
+
+function drawGrass(px, py) {
+  ctx.fillStyle = "#4d833e";
+  ctx.fillRect(px + 8, py + 9, 3, 8);
+  ctx.fillRect(px + 22, py + 18, 3, 7);
+  ctx.fillRect(px + 15, py + 24, 2, 5);
+}
+
+function drawHouse(px, py) {
+  ctx.fillStyle = "rgba(33, 25, 22, 0.22)";
+  ctx.fillRect(px + 4, py + 27, 25, 4);
+  ctx.fillStyle = "#e7d5ad";
+  ctx.beginPath();
+  ctx.moveTo(px + 16, py + 2);
+  ctx.lineTo(px + 30, py + 13);
+  ctx.lineTo(px + 26, py + 17);
+  ctx.lineTo(px + 6, py + 17);
+  ctx.lineTo(px + 2, py + 13);
+  ctx.closePath();
+  ctx.fill();
+  ctx.fillStyle = "#b68b5e";
+  ctx.fillRect(px + 4, py + 14, 24, 4);
+  ctx.fillStyle = "#8b5b3e";
+  ctx.fillRect(px + 5, py + 18, 22, 10);
+  ctx.fillStyle = "#5c4330";
+  ctx.fillRect(px + 14, py + 20, 5, 8);
+  ctx.fillStyle = "#f1d79c";
+  ctx.fillRect(px + 7, py + 20, 5, 4);
+  ctx.fillRect(px + 22, py + 20, 3, 4);
+  ctx.fillStyle = "#211916";
+  ctx.fillRect(px + 5, py + 17, 22, 2);
+}
+
+function drawTent(px, py) {
+  ctx.fillStyle = "rgba(33, 25, 22, 0.18)";
+  ctx.fillRect(px + 3, py + 28, 26, 3);
+  ctx.fillStyle = "#f4dfae";
+  ctx.beginPath();
+  ctx.moveTo(px + 16, py + 3);
+  ctx.lineTo(px + 30, py + 20);
+  ctx.lineTo(px + 26, py + 28);
+  ctx.lineTo(px + 6, py + 28);
+  ctx.lineTo(px + 2, py + 20);
+  ctx.closePath();
+  ctx.fill();
+  ctx.fillStyle = "#d6b77b";
+  ctx.fillRect(px + 5, py + 19, 22, 9);
+  ctx.fillStyle = "#745139";
+  ctx.fillRect(px + 14, py + 19, 4, 9);
+  ctx.fillStyle = "#fff4d8";
+  ctx.fillRect(px + 7, py + 21, 5, 3);
+  ctx.fillRect(px + 20, py + 21, 5, 3);
+  ctx.fillStyle = "#8b5b3e";
+  ctx.fillRect(px + 4, py + 27, 24, 2);
+}
+
+function drawTree(px, py) {
+  ctx.fillStyle = "#6b442c";
+  ctx.fillRect(px + 13, py + 15, 6, 14);
+  ctx.fillStyle = "#2f6839";
+  ctx.fillRect(px + 6, py + 4, 20, 16);
+  ctx.fillStyle = "#244f2d";
+  ctx.fillRect(px + 10, py + 2, 12, 8);
+}
+
+function drawStone(px, py) {
+  ctx.fillStyle = "#c9c1ac";
+  ctx.fillRect(px + 7, py + 8, 18, 16);
+  ctx.fillStyle = "#6d675c";
+  ctx.fillRect(px + 10, py + 14, 12, 3);
+}
+
+function drawAltar(px, py) {
+  ctx.fillStyle = "#5c574f";
+  ctx.fillRect(px + 6, py + 20, 20, 7);
+  ctx.fillRect(px + 9, py + 14, 14, 7);
+  ctx.fillStyle = "#d76b36";
+  ctx.fillRect(px + 14, py + 8, 4, 6);
+}
+
+function drawWell(px, py) {
+  ctx.fillStyle = "#3b5964";
+  ctx.fillRect(px + 8, py + 10, 16, 15);
+  ctx.fillStyle = "#9bd8df";
+  ctx.fillRect(px + 10, py + 12, 12, 5);
+  ctx.fillStyle = "#6d675c";
+  ctx.fillRect(px + 6, py + 8, 20, 4);
+}
+
+function drawFence(px, py) {
+  ctx.fillStyle = "#3c2a20";
+  ctx.fillRect(px + 4, py + 10, 24, 4);
+  ctx.fillRect(px + 4, py + 20, 24, 4);
+  ctx.fillRect(px + 8, py + 6, 4, 22);
+  ctx.fillRect(px + 22, py + 6, 4, 22);
+}
+
+function drawMarket(px, py) {
+  ctx.fillStyle = "rgba(33, 25, 22, 0.2)";
+  ctx.fillRect(px + 4, py + 28, 24, 3);
+  ctx.fillStyle = "#5b3627";
+  ctx.fillRect(px + 5, py + 16, 22, 12);
+  ctx.fillStyle = "#f0c66e";
+  ctx.fillRect(px + 3, py + 8, 26, 9);
+  ctx.fillStyle = "#9e4b38";
+  ctx.fillRect(px + 5, py + 8, 5, 9);
+  ctx.fillRect(px + 16, py + 8, 5, 9);
+  ctx.fillStyle = "#fff4d8";
+  ctx.fillRect(px + 10, py + 8, 6, 9);
+  ctx.fillRect(px + 21, py + 8, 6, 9);
+  ctx.fillStyle = "#263d2b";
+  ctx.fillRect(px + 8, py + 21, 5, 4);
+  ctx.fillStyle = "#d39a63";
+  ctx.fillRect(px + 18, py + 20, 5, 6);
+  ctx.fillStyle = "#211916";
+  ctx.fillRect(px + 5, py + 17, 22, 2);
+}
+
+function drawJars(px, py) {
+  ctx.fillStyle = "#7d452b";
+  ctx.fillRect(px + 7, py + 11, 7, 13);
+  ctx.fillRect(px + 18, py + 8, 8, 16);
+  ctx.fillStyle = "#d39a63";
+  ctx.fillRect(px + 9, py + 9, 3, 3);
+  ctx.fillRect(px + 20, py + 6, 4, 3);
+}
+
+function drawCart(px, py) {
+  ctx.fillStyle = "#4c3325";
+  ctx.fillRect(px + 4, py + 12, 24, 10);
+  ctx.fillStyle = "#1f1712";
+  ctx.fillRect(px + 7, py + 23, 5, 5);
+  ctx.fillRect(px + 21, py + 23, 5, 5);
+  ctx.fillStyle = "#c08a58";
+  ctx.fillRect(px + 8, py + 8, 16, 4);
+}
+
+function drawCloth(px, py) {
+  ctx.fillStyle = "#47304d";
+  ctx.fillRect(px + 4, py + 9, 24, 4);
+  ctx.fillStyle = "#b56c8a";
+  ctx.fillRect(px + 6, py + 13, 20, 13);
+  ctx.fillStyle = "#f0c66e";
+  ctx.fillRect(px + 9, py + 16, 3, 8);
+  ctx.fillRect(px + 19, py + 16, 3, 8);
+}
+
+function drawTownsperson(npc) {
+  drawRobePerson(npc.x, npc.y, {
+    robe: npc.robe,
+    hair: npc.hair,
+    beard: "#3b2417",
+    headCover: false,
+  });
+}
+
+function drawNoah() {
+  drawRobePerson(player.x, player.y, {
+    robe: "#7a6145",
+    trim: "#d7c08a",
+    hair: "#f1e3c0",
+    beard: "#f1e3c0",
+    staff: true,
+    headCover: true,
+  });
+  const px = player.x * tileSize;
+  const py = player.y * tileSize;
+  ctx.fillStyle = "#f4d36d";
+  if (player.facing === "up") ctx.fillRect(px + 14, py + 1, 4, 4);
+  if (player.facing === "down") ctx.fillRect(px + 14, py + 28, 4, 4);
+  if (player.facing === "left") ctx.fillRect(px + 3, py + 15, 4, 4);
+  if (player.facing === "right") ctx.fillRect(px + 25, py + 15, 4, 4);
+}
+
+function drawRobePerson(x, y, detail) {
+  const px = x * tileSize;
+  const py = y * tileSize;
+
+  ctx.fillStyle = "rgba(33, 25, 22, 0.22)";
+  ctx.fillRect(px + 7, py + 29, 20, 3);
+
+  ctx.fillStyle = detail.hair || "#3b2417";
+  ctx.fillRect(px + 9, py + 4, 14, 8);
+  if (detail.headCover) {
+    ctx.fillStyle = "#e7d5ad";
+    ctx.fillRect(px + 8, py + 3, 16, 6);
+    ctx.fillRect(px + 10, py + 8, 12, 4);
+    ctx.fillStyle = "#5c4330";
+    ctx.fillRect(px + 8, py + 9, 16, 2);
+  }
+
+  ctx.fillStyle = "#c98b5f";
+  ctx.fillRect(px + 10, py + 10, 12, 8);
+  ctx.fillStyle = "#211916";
+  ctx.fillRect(px + 13, py + 13, 2, 2);
+  ctx.fillRect(px + 18, py + 13, 2, 2);
+
+  ctx.fillStyle = detail.beard || detail.hair;
+  if (detail.beard) {
+    ctx.fillRect(px + 11, py + 16, 10, 5);
+    ctx.fillRect(px + 13, py + 20, 6, 3);
+  } else {
+    ctx.fillRect(px + 10, py + 17, 12, 3);
+  }
+
+  ctx.fillStyle = detail.robe;
+  ctx.beginPath();
+  ctx.moveTo(px + 9, py + 19);
+  ctx.lineTo(px + 23, py + 19);
+  ctx.lineTo(px + 26, py + 29);
+  ctx.lineTo(px + 6, py + 29);
+  ctx.closePath();
+  ctx.fill();
+  ctx.fillRect(px + 10, py + 18, 12, 5);
+
+  ctx.fillStyle = "#c98b5f";
+  ctx.fillRect(px + 6, py + 21, 4, 5);
+  ctx.fillRect(px + 22, py + 21, 4, 5);
+
+  ctx.fillStyle = detail.trim || "#dfc17a";
+  ctx.fillRect(px + 15, py + 19, 2, 10);
+  ctx.fillRect(px + 9, py + 22, 14, 2);
+
+  ctx.fillStyle = "#2a211c";
+  ctx.fillRect(px + 8, py + 29, 5, 3);
+  ctx.fillRect(px + 20, py + 29, 5, 3);
+  if (detail.staff) {
+    ctx.fillStyle = "#5b3925";
+    ctx.fillRect(px + 25, py + 9, 3, 23);
+    ctx.fillRect(px + 22, py + 9, 6, 3);
+  }
+}
+
+function drawLabels() {
+  drawMapSign("NOAH'S", "HOME", 11, 3, "home");
+  drawMapSign("MARKET", "STALL", 8, 9, "market");
+  drawMapSign("ALTAR", "OF WORSHIP", 14, 9, "altar");
+  drawMapSign("TOWN", "WELL", 21, 9, "well");
+}
+
+function drawPhase2Landmarks() {
+  if (currentMapId === "worksite") {
+    drawArkFrameLandmark();
+    drawTravelSign(4, 8, "GOPHER", "WOOD");
+    drawTravelSign(21, 8, "PITCH", "PITS");
+    drawTravelSign(12, 15, "FOOD", "TENTS");
+  }
+  if (currentMapId === "forest") {
+    drawResourceMarkers("wood");
+    drawTravelSign(22, 8, "ARK", "SITE");
+  }
+  if (currentMapId === "pitch") {
+    drawResourceMarkers("pitch");
+    drawTravelSign(3, 8, "ARK", "SITE");
+  }
+  if (currentMapId === "supplies") {
+    drawResourceMarkers("food");
+    drawTravelSign(18, 1, "ARK", "SITE");
+  }
+}
+
+function drawPhase2Labels() {
+  const currentMap = phase2Maps[currentMapId];
+  const name = currentMap ? currentMap.name : "Ark Lands";
+  const x = 72;
+  const y = 30;
+  const w = 210;
+  const h = 26;
+  ctx.fillStyle = "rgba(33, 25, 22, 0.22)";
+  ctx.fillRect(x + 4, y + 4, w, h);
+  ctx.fillStyle = "rgba(255, 249, 232, 0.92)";
+  ctx.fillRect(x, y, w, h);
+  ctx.strokeStyle = "#211916";
+  ctx.strokeRect(x, y, w, h);
+  ctx.fillStyle = "#211916";
+  ctx.font = "bold 11px Courier New";
+  drawFittedText(name.toUpperCase(), x + 10, y + 17, w - 20, 11);
+}
+
+function drawArkFrameLandmark() {
+  const px = 10 * tileSize;
+  const py = 3 * tileSize;
+  ctx.fillStyle = "rgba(33, 25, 22, 0.18)";
+  ctx.fillRect(px + 40, py + 118, 176, 6);
+  ctx.strokeStyle = "#6f472f";
+  ctx.lineWidth = 3;
+  ctx.setLineDash([8, 6]);
+  ctx.strokeRect(px + 32, py + 42, 192, 84);
+  ctx.setLineDash([]);
+  ctx.fillStyle = "#5b3925";
+  [[36, 46], [212, 46], [36, 96], [212, 96], [124, 48], [124, 94]].forEach(([sx, sy]) => {
+    ctx.fillRect(px + sx, py + sy, 8, 24);
+  });
+  ctx.strokeStyle = "#caa15f";
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(px + 32, py + 50);
+  ctx.lineTo(px + 224, py + 50);
+  ctx.moveTo(px + 32, py + 120);
+  ctx.lineTo(px + 224, py + 120);
+  ctx.moveTo(px + 128, py + 48);
+  ctx.lineTo(px + 128, py + 124);
+  ctx.stroke();
+  if (buildComplete) {
+    drawCleanWorksiteArk(px, py);
+    ctx.lineWidth = 1;
+    return;
+  }
+  ctx.lineWidth = 1;
+}
+
+function drawCleanWorksiteArk(px, py) {
+  ctx.setLineDash([]);
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(px + 32, py + 42, 192, 84);
+  ctx.clip();
+
+  ctx.fillStyle = "rgba(33, 25, 22, 0.22)";
+  ctx.fillRect(px + 38, py + 120, 180, 6);
+
+  ctx.fillStyle = "#7a5439";
+  ctx.beginPath();
+  ctx.moveTo(px + 42, py + 110);
+  ctx.lineTo(px + 74, py + 70);
+  ctx.quadraticCurveTo(px + 126, py + 52, px + 178, py + 70);
+  ctx.lineTo(px + 214, py + 110);
+  ctx.quadraticCurveTo(px + 174, py + 126, px + 82, py + 126);
+  ctx.closePath();
+  ctx.fill();
+  ctx.strokeStyle = "#211916";
+  ctx.lineWidth = 4;
+  ctx.stroke();
+
+  ctx.fillStyle = "#b9794d";
+  ctx.fillRect(px + 78, py + 74, 96, 12);
+  ctx.fillRect(px + 62, py + 96, 128, 12);
+  ctx.fillRect(px + 80, py + 114, 100, 10);
+  ctx.strokeStyle = sealComplete ? "#1f1715" : "#4b3022";
+  ctx.lineWidth = sealComplete ? 3 : 2;
+  [76, 96, 114].forEach((offset) => {
+    ctx.beginPath();
+    ctx.moveTo(px + 62, py + offset);
+    ctx.lineTo(px + 190, py + offset);
+    ctx.stroke();
+  });
+
+  if (animalsComplete) {
+    drawTinyAnimalMark(px + 86, py + 83, "#f1e5c7");
+    drawTinyAnimalMark(px + 126, py + 84, "#252525");
+    drawTinyAnimalMark(px + 158, py + 101, "#b98256");
+  }
+  if (finalStoresComplete) {
+    drawTinyCrate(px + 114, py + 110);
+    drawTinyCrate(px + 138, py + 110);
+  }
+
+  ctx.fillStyle = journeyStarted ? "#211916" : "#4b3022";
+  ctx.fillRect(px + 174, py + 92, 18, 32);
+  ctx.strokeStyle = "#211916";
+  ctx.lineWidth = 2;
+  ctx.strokeRect(px + 174, py + 92, 18, 32);
+
+  if (journeyStarted) {
+    ctx.fillStyle = "rgba(240, 198, 110, 0.3)";
+    ctx.fillRect(px + 170, py + 88, 26, 38);
+  }
+  ctx.restore();
+}
+
+function drawTinyCrate(x, y) {
+  ctx.fillStyle = "#dcc48d";
+  ctx.fillRect(x, y, 16, 12);
+  ctx.strokeStyle = "#211916";
+  ctx.lineWidth = 1;
+  ctx.strokeRect(x, y, 16, 12);
+  ctx.fillStyle = "#8b5b3e";
+  ctx.fillRect(x + 2, y + 5, 12, 2);
+}
+
+function drawTinyPerson(x, y, color) {
+  drawSmallFamilySprite(x, y, color, "#5b3925", false, 1);
+}
+
+function drawTinyAnimalMark(x, y, color) {
+  ctx.fillStyle = color;
+  ctx.fillRect(x, y, 16, 9);
+  ctx.fillRect(x + 12, y - 4, 8, 8);
+  ctx.fillStyle = "#211916";
+  ctx.fillRect(x + 16, y - 1, 2, 2);
+  ctx.fillRect(x + 3, y + 8, 3, 7);
+  ctx.fillRect(x + 11, y + 8, 3, 7);
+}
+
+function drawResourceMarkers(type) {
+  phase2Actions
+    .filter((action) => action.mapId === currentMapId && action.type === type)
+    .forEach((action) => {
+      action.tiles.forEach(([x, y]) => {
+        const px = x * tileSize;
+        const py = y * tileSize;
+        ctx.fillStyle = type === "wood" ? "#f0c66e" : type === "pitch" ? "#2b201d" : "#fff4d8";
+        ctx.fillRect(px + 10, py + 7, 12, 12);
+        ctx.strokeStyle = "#211916";
+        ctx.strokeRect(px + 10, py + 7, 12, 12);
+        if (type === "wood") {
+          ctx.fillStyle = "#6b442c";
+          ctx.fillRect(px + 8, py + 20, 16, 5);
+        }
+        if (type === "pitch") {
+          ctx.fillStyle = "#f0c66e";
+          ctx.fillRect(px + 13, py + 10, 6, 3);
+        }
+        if (type === "food") {
+          ctx.fillStyle = "#8b5b3e";
+          ctx.fillRect(px + 9, py + 19, 15, 7);
+        }
+      });
+    });
+}
+
+function drawTravelSign(x, y, lineOne, lineTwo) {
+  const px = x * tileSize;
+  const py = y * tileSize;
+  const w = 88;
+  const h = 38;
+  ctx.fillStyle = "rgba(33, 25, 22, 0.22)";
+  ctx.fillRect(px + 5, py + 6, w, h);
+  ctx.fillStyle = "#5b3925";
+  ctx.fillRect(px + 10, py + h - 2, 5, 18);
+  ctx.fillRect(px + w - 15, py + h - 2, 5, 18);
+  ctx.fillStyle = "#8b5b3e";
+  ctx.fillRect(px, py, w, h);
+  ctx.fillStyle = "#c8945e";
+  ctx.fillRect(px + 4, py + 4, w - 8, h - 8);
+  ctx.strokeStyle = "#211916";
+  ctx.lineWidth = 2;
+  ctx.strokeRect(px, py, w, h);
+  ctx.fillStyle = "#211916";
+  drawReadableFittedText(lineOne, px + 9, py + 18, w - 18, 12);
+  drawReadableFittedText(lineTwo, px + 9, py + 32, w - 18, 12);
+  ctx.lineWidth = 1;
+}
+
+function drawMapSign(lineOne, lineTwo, x, y, icon) {
+  const px = x * tileSize;
+  const py = y * tileSize;
+  const width = 92;
+  const height = 38;
+  const iconX = px + 7;
+  const iconY = py + 10;
+  const textX = px + 28;
+  const maxTextWidth = width - 34;
+
+  ctx.fillStyle = "rgba(33, 25, 22, 0.24)";
+  ctx.fillRect(px + 5, py + 6, width, height);
+  ctx.fillStyle = "#5b3925";
+  ctx.fillRect(px + 8, py + height - 2, 4, 11);
+  ctx.fillRect(px + width - 12, py + height - 2, 4, 11);
+  ctx.fillStyle = "#8b5b3e";
+  ctx.fillRect(px, py, width, height);
+  ctx.fillStyle = "#c8945e";
+  ctx.fillRect(px + 3, py + 3, width - 6, height - 6);
+  ctx.fillStyle = "#6f472f";
+  ctx.fillRect(px + 3, py + 4, width - 6, 2);
+  ctx.fillRect(px + 3, py + height - 6, width - 6, 2);
+  ctx.fillStyle = "rgba(255, 244, 216, 0.28)";
+  ctx.fillRect(px + 25, py + 9, width - 31, 21);
+  ctx.strokeStyle = "#211916";
+  ctx.lineWidth = 2;
+  ctx.strokeRect(px, py, width, height);
+
+  drawSignIcon(icon, iconX, iconY);
+
+  ctx.fillStyle = "#211916";
+  drawReadableFittedText(lineOne, textX, py + 17, maxTextWidth, 12);
+  drawReadableFittedText(lineTwo, textX, py + 30, maxTextWidth, 11);
+  ctx.lineWidth = 1;
+}
+
+function drawFittedText(text, x, y, maxWidth, baseSize) {
+  let size = baseSize;
+  do {
+    ctx.font = `bold ${size}px Courier New`;
+    if (ctx.measureText(text).width <= maxWidth || size <= 5) break;
+    size -= 1;
+  } while (size > 5);
+  ctx.fillText(text, x, y);
+}
+
+function drawReadableFittedText(text, x, y, maxWidth, baseSize) {
+  let size = baseSize;
+  do {
+    ctx.font = `bold ${size}px Courier New`;
+    if (ctx.measureText(text).width <= maxWidth || size <= 6) break;
+    size -= 1;
+  } while (size > 6);
+  ctx.fillStyle = "#211916";
+  ctx.fillText(text, x, y);
+}
+
+function drawWrappedCanvasText(text, x, y, maxWidth, lineHeight, maxLines) {
+  const words = String(text).split(/\s+/);
+  const lines = [];
+  let line = "";
+  words.forEach((word) => {
+    const test = line ? `${line} ${word}` : word;
+    if (ctx.measureText(test).width <= maxWidth || !line) {
+      line = test;
+    } else {
+      lines.push(line);
+      line = word;
+    }
+  });
+  if (line) lines.push(line);
+  lines.slice(0, maxLines).forEach((item, index) => {
+    ctx.fillText(item, x, y + index * lineHeight);
+  });
+}
+
+function drawSignIcon(icon, x, y) {
+  ctx.fillStyle = "#211916";
+  if (icon === "home") {
+    ctx.fillRect(x + 3, y + 10, 14, 7);
+    ctx.beginPath();
+    ctx.moveTo(x + 10, y + 2);
+    ctx.lineTo(x + 18, y + 10);
+    ctx.lineTo(x + 2, y + 10);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = "#e7d5ad";
+    ctx.fillRect(x + 9, y + 12, 3, 5);
+  }
+  if (icon === "market") {
+    ctx.fillRect(x + 2, y + 7, 14, 8);
+    ctx.fillStyle = "#e7d5ad";
+    ctx.fillRect(x + 4, y + 4, 10, 4);
+  }
+  if (icon === "altar") {
+    ctx.fillRect(x + 2, y + 12, 14, 4);
+    ctx.fillRect(x + 5, y + 8, 8, 4);
+    ctx.fillStyle = "#d76b36";
+    ctx.fillRect(x + 8, y + 2, 3, 5);
+  }
+  if (icon === "tent") {
+    ctx.beginPath();
+    ctx.moveTo(x + 9, y + 2);
+    ctx.lineTo(x + 17, y + 16);
+    ctx.lineTo(x + 1, y + 16);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = "#e7d5ad";
+    ctx.fillRect(x + 8, y + 10, 2, 6);
+  }
+  if (icon === "well") {
+    ctx.fillRect(x + 4, y + 7, 12, 9);
+    ctx.fillStyle = "#e7d5ad";
+    ctx.fillRect(x + 3, y + 5, 14, 3);
+    ctx.fillStyle = "#4ea3ba";
+    ctx.fillRect(x + 7, y + 10, 6, 3);
+  }
+}
+
+function drawMinimap() {
+  const scale = 4;
+  const pad = 8;
+  const mapW = cols * scale;
+  const mapH = rows * scale;
+  const x0 = canvas.width - mapW - pad - 12;
+  const y0 = 12;
+  const panelW = mapW + pad * 2;
+  const panelH = mapH + 31;
+
+  ctx.fillStyle = "rgba(33, 25, 22, 0.34)";
+  ctx.fillRect(x0 + 5, y0 + 5, panelW, panelH);
+  ctx.fillStyle = "rgba(255, 249, 232, 0.94)";
+  ctx.fillRect(x0, y0, panelW, panelH);
+  ctx.strokeStyle = "#211916";
+  ctx.lineWidth = 3;
+  ctx.strokeRect(x0, y0, panelW, panelH);
+
+  ctx.fillStyle = "#211916";
+  ctx.font = "bold 11px Courier New";
+  ctx.fillText("MAP", x0 + pad, y0 + 14);
+
+  const mx = x0 + pad;
+  const my = y0 + 21;
+  const miniRows = activeMapRows();
+  for (let y = 0; y < rows; y += 1) {
+    for (let x = 0; x < cols; x += 1) {
+      ctx.fillStyle = minimapColor(miniRows[y][x] || TILE.sand);
+      ctx.fillRect(mx + x * scale, my + y * scale, scale, scale);
+    }
+  }
+
+  if (currentMapId === "settlement") {
+    markMiniArea(mx, my, 14, 0, 5, 3, "#5b3925");
+    markMiniArea(mx, my, 5, 7, 3, 2, "#9e4b38");
+    markMiniArea(mx, my, 23, 8, 2, 1, "#4ea3ba");
+    markMiniArea(mx, my, 8, 11, 6, 4, "#4c3325");
+    markMiniArea(mx, my, 17, 10, 2, 2, "#858070");
+
+    townspeople.forEach((npc) => {
+      ctx.fillStyle = heardTown.has(npc.evidence) ? "#5f8f47" : "#b33b34";
+      ctx.fillRect(mx + npc.x * scale - 1, my + npc.y * scale - 1, scale + 2, scale + 2);
+    });
+  } else {
+    ctx.strokeStyle = "#b76548";
+    ctx.lineWidth = 2;
+    phase2Actions
+      .filter((action) => action.mapId === currentMapId)
+      .forEach((action) => action.tiles.forEach(([x, y]) => ctx.strokeRect(mx + x * scale - 1, my + y * scale - 1, scale + 2, scale + 2)));
+  }
+
+  ctx.fillStyle = "#f4d36d";
+  ctx.fillRect(mx + player.x * scale - 2, my + player.y * scale - 2, scale + 4, scale + 4);
+  ctx.strokeStyle = "#211916";
+  ctx.lineWidth = 1;
+  ctx.strokeRect(mx + player.x * scale - 2, my + player.y * scale - 2, scale + 4, scale + 4);
+}
+
+function minimapColor(tile) {
+  if (tile === TILE.water) return "#4ea3ba";
+  if (tile === TILE.grass || tile === TILE.field || tile === TILE.tree) return "#6e9f54";
+  if (tile === TILE.path) return "#c99658";
+  if (tile === TILE.cart || tile === TILE.house) return "#6f472f";
+  if (tile === TILE.tent || tile === TILE.cloth) return "#dcc48d";
+  if (tile === TILE.market || tile === TILE.jar) return "#b76548";
+  if (tile === TILE.stone || tile === TILE.altar || tile === TILE.well) return "#858070";
+  if (tile === TILE.fence) return "#4c3325";
+  return "#dfc17a";
+}
+
+function markMiniArea(mx, my, x, y, w, h, color) {
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 2;
+  ctx.strokeRect(mx + x * 4 - 1, my + y * 4 - 1, w * 4 + 2, h * 4 + 2);
+  ctx.lineWidth = 1;
+}
+
+function drawScene() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  const rowsToDraw = activeMapRows();
+  for (let y = 0; y < rows; y += 1) {
+    for (let x = 0; x < cols; x += 1) drawTile(rowsToDraw[y][x] || TILE.sand, x, y);
+  }
+
+  if (currentMapId === "settlement") {
+    drawLandmarks();
+
+    inspectables.forEach((sign) => {
+      const px = sign.x * tileSize;
+      const py = sign.y * tileSize;
+      ctx.fillStyle = "#fff4d8";
+      ctx.fillRect(px + 10, py + 8, 12, 14);
+      ctx.fillStyle = "#211916";
+      ctx.fillRect(px + 15, py + 22, 2, 8);
+    });
+
+    drawLabels();
+    townspeople.forEach(drawTownsperson);
+  } else {
+    drawPhase2Landmarks();
+    drawPhase2Labels();
+  }
+  drawNoah();
+  drawMinimap();
+
+  if (cutsceneActive) drawArkCallCutsceneOverlay(performance.now() - cutsceneStartedAt);
+  if (embarkSceneActive || journeyStarted) drawEmbarkSceneOverlay(performance.now() - embarkSceneStartedAt);
+  if (activeMinigame) drawMinigame();
+
+}
+
+function drawEmbarkSceneOverlay(elapsed) {
+  const t = Math.max(0, Math.min(1, elapsed / 7600));
+  const fadeIn = Math.min(1, elapsed / 900);
+  const doorClose = Math.max(0, Math.min(1, (elapsed - 5200) / 1600));
+  const glow = 0.25 + Math.sin(elapsed / 360) * 0.05;
+
+  ctx.fillStyle = `rgba(25, 20, 18, ${0.42 * fadeIn})`;
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  drawEmbarkArk(glow, doorClose);
+
+  const family = [
+    { robe: "#7a6145", hair: "#f1e3c0", cover: true, delay: 0, y: 382, scale: 1.28 },
+    { robe: "#8d4830", hair: "#47301f", cover: true, delay: 0.1, y: 410, scale: 1.12 },
+    { robe: "#3f7445", hair: "#3b2417", cover: false, delay: 0.2, y: 430, scale: 1.05 },
+    { robe: "#5b6f90", hair: "#2f2118", cover: false, delay: 0.3, y: 448, scale: 1.03 },
+    { robe: "#9b6742", hair: "#2f2118", cover: false, delay: 0.4, y: 466, scale: 1.02 },
+    { robe: "#6f5a8b", hair: "#3b2417", cover: true, delay: 0.5, y: 484, scale: 1.02 },
+  ];
+  family.forEach((person, index) => {
+    const p = Math.max(0, Math.min(1, (t - person.delay * 0.45) / 0.58));
+    if (p >= 1 && doorClose > 0.55) return;
+    const walkBob = Math.sin(elapsed / 130 + index) * 3 * (1 - Math.abs(p - 0.5));
+    const x = 150 + p * 476 + index * 5;
+    const y = person.y - p * 92 + walkBob;
+    drawSmallFamilySprite(x, y, person.robe, person.hair, person.cover, person.scale);
+  });
+
+  ctx.fillStyle = "rgba(255, 249, 232, 0.95)";
+  ctx.fillRect(92, 64, 712, 56);
+  ctx.strokeStyle = "#211916";
+  ctx.lineWidth = 4;
+  ctx.strokeRect(92, 64, 712, 56);
+  ctx.fillStyle = "#211916";
+  ctx.font = "bold 18px Courier New";
+  const message = doorClose > 0.72 ? "The door is shut. The ark journey begins." : "Noah and his family enter the ark.";
+  drawFittedText(message, 122, 100, 652, 18);
+
+  if (doorClose > 0.95) {
+    ctx.fillStyle = "rgba(255, 249, 232, 0.95)";
+    ctx.fillRect(242, 136, 412, 92);
+    ctx.strokeStyle = "#211916";
+    ctx.lineWidth = 4;
+    ctx.strokeRect(242, 136, 412, 92);
+    ctx.fillStyle = "#211916";
+    ctx.font = "bold 24px Courier New";
+    ctx.fillText("END OF THIS CHAPTER", 292, 174);
+    ctx.font = "bold 15px Courier New";
+    ctx.fillText("Noah's family has entered the ark.", 292, 204);
+  }
+}
+
+function drawEmbarkArk(glow, doorClose) {
+  const hull = new Path2D();
+  hull.moveTo(86, 398);
+  hull.bezierCurveTo(126, 338, 166, 264, 222, 232);
+  hull.quadraticCurveTo(336, 160, 448, 150);
+  hull.quadraticCurveTo(560, 160, 674, 232);
+  hull.bezierCurveTo(730, 264, 770, 338, 810, 398);
+  hull.quadraticCurveTo(748, 462, 448, 462);
+  hull.quadraticCurveTo(148, 462, 86, 398);
+  hull.closePath();
+
+  ctx.fillStyle = "rgba(33, 25, 22, 0.28)";
+  ctx.fillRect(126, 462, 646, 10);
+  ctx.fillStyle = "#6f472f";
+  ctx.fill(hull);
+  ctx.strokeStyle = "#211916";
+  ctx.lineWidth = 7;
+  ctx.stroke(hull);
+
+  ctx.save();
+  ctx.clip(hull);
+  const rows = [
+    { y: 245, h: 34, offset: 0, color: "#bf8754" },
+    { y: 284, h: 34, offset: 44, color: "#b9794d" },
+    { y: 323, h: 34, offset: 2, color: "#c28a55" },
+    { y: 362, h: 34, offset: 48, color: "#b9794d" },
+    { y: 401, h: 34, offset: 8, color: "#a86c45" },
+  ];
+  rows.forEach((row) => {
+    ctx.fillStyle = row.color;
+    for (let x = 108 - row.offset; x < 820; x += 112) {
+      ctx.fillRect(x, row.y, 104, row.h);
+      ctx.fillStyle = "rgba(255, 244, 216, 0.13)";
+      ctx.fillRect(x + 8, row.y + 5, 78, 5);
+      ctx.fillStyle = row.color;
+    }
+  });
+
+  ctx.strokeStyle = "#2f2118";
+  ctx.lineWidth = 4;
+  [242, 282, 322, 362, 402].forEach((y) => {
+    ctx.beginPath();
+    ctx.moveTo(110, y);
+    ctx.lineTo(786, y);
+    ctx.stroke();
+  });
+  ctx.lineWidth = 2;
+  for (let x = 172; x <= 724; x += 72) {
+    ctx.beginPath();
+    ctx.moveTo(x, 236);
+    ctx.lineTo(x + 18, 444);
+    ctx.stroke();
+  }
+  ctx.restore();
+
+  ctx.strokeStyle = "#1f1715";
+  ctx.lineWidth = 5;
+  ctx.beginPath();
+  ctx.moveTo(174, 390);
+  ctx.bezierCurveTo(300, 426, 596, 426, 722, 390);
+  ctx.stroke();
+  ctx.lineWidth = 4;
+  ctx.beginPath();
+  ctx.moveTo(208, 260);
+  ctx.quadraticCurveTo(448, 186, 688, 260);
+  ctx.stroke();
+
+  ctx.fillStyle = "#2f2118";
+  ctx.fillRect(398, 178, 100, 24);
+  ctx.strokeStyle = "#211916";
+  ctx.lineWidth = 4;
+  ctx.strokeRect(398, 178, 100, 24);
+  ctx.fillStyle = "rgba(151, 198, 216, 0.7)";
+  ctx.fillRect(410, 184, 76, 10);
+
+  const doorX = 626;
+  const doorY = 294;
+  const doorW = 84;
+  const doorH = 120;
+  ctx.fillStyle = `rgba(240, 198, 110, ${0.52 + glow})`;
+  ctx.fillRect(doorX + 8, doorY + 10, doorW - 16, doorH - 18);
+  ctx.fillStyle = "#4b3022";
+  ctx.fillRect(doorX, doorY, doorW, doorH);
+  ctx.fillStyle = "#2b201d";
+  const coverW = Math.floor(doorW * doorClose);
+  ctx.fillRect(doorX, doorY, coverW, doorH);
+  if (coverW < doorW) {
+    ctx.fillStyle = `rgba(240, 198, 110, ${0.58 + glow})`;
+    ctx.fillRect(doorX + coverW, doorY + 8, doorW - coverW, doorH - 16);
+  }
+  ctx.strokeStyle = "#211916";
+  ctx.lineWidth = 5;
+  ctx.strokeRect(doorX, doorY, doorW, doorH);
+  ctx.strokeStyle = "#1f1715";
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.moveTo(doorX + coverW, doorY);
+  ctx.lineTo(doorX + coverW, doorY + doorH);
+  ctx.stroke();
+}
+
+function drawSmallFamilySprite(x, y, robe, hair, headCover, scale = 1) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.scale(scale, scale);
+  ctx.fillStyle = "rgba(33, 25, 22, 0.22)";
+  ctx.fillRect(0, 27, 20, 3);
+  ctx.fillStyle = hair;
+  ctx.fillRect(5, 1, 11, 7);
+  if (headCover) {
+    ctx.fillStyle = "#e7d5ad";
+    ctx.fillRect(3, 0, 15, 6);
+    ctx.fillStyle = "#5c4330";
+    ctx.fillRect(3, 6, 15, 2);
+  }
+  ctx.fillStyle = "#c98b5f";
+  ctx.fillRect(6, 8, 10, 8);
+  ctx.fillStyle = "#211916";
+  ctx.fillRect(8, 11, 2, 2);
+  ctx.fillRect(13, 11, 2, 2);
+  ctx.fillStyle = robe;
+  ctx.beginPath();
+  ctx.moveTo(5, 17);
+  ctx.lineTo(16, 17);
+  ctx.lineTo(19, 28);
+  ctx.lineTo(2, 28);
+  ctx.closePath();
+  ctx.fill();
+  ctx.fillStyle = "#d7c08a";
+  ctx.fillRect(10, 17, 2, 11);
+  ctx.fillRect(6, 21, 10, 2);
+  ctx.fillStyle = "#211916";
+  ctx.fillRect(4, 28, 5, 3);
+  ctx.fillRect(13, 28, 5, 3);
+  ctx.restore();
+}
+
+function drawArkCallCutsceneOverlay(elapsed) {
+  const pulse = Math.sin(elapsed / 420) * 0.08;
+  ctx.fillStyle = "rgba(25, 21, 28, 0.38)";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  const planX = 218;
+  const planY = 116;
+  const glowX = planX + 230;
+  const glowY = planY - 38;
+  const glow = ctx.createRadialGradient(glowX, glowY, 12, glowX, glowY, 178 + pulse * 80);
+  glow.addColorStop(0, "rgba(255, 249, 213, 0.96)");
+  glow.addColorStop(0.34, "rgba(242, 202, 109, 0.5)");
+  glow.addColorStop(0.7, "rgba(151, 198, 216, 0.18)");
+  glow.addColorStop(1, "rgba(255, 255, 255, 0)");
+  ctx.fillStyle = glow;
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  ctx.fillStyle = "rgba(255, 249, 213, 0.42)";
+  for (let i = 0; i < 7; i += 1) {
+    const x = glowX - 108 + i * 36;
+    const top = 0;
+    const bottom = 158 + Math.sin(elapsed / 500 + i) * 12;
+    ctx.beginPath();
+    ctx.moveTo(x, top);
+    ctx.lineTo(x + 16, top);
+    ctx.lineTo(glowX + 12 - i * 2, bottom);
+    ctx.lineTo(glowX - 12 + i * 2, bottom);
+    ctx.closePath();
+    ctx.fill();
+  }
+
+  ctx.fillStyle = "#fff9d5";
+  ctx.fillRect(glowX - 30, glowY - 24, 60, 12);
+  ctx.fillRect(glowX - 42, glowY - 10, 84, 16);
+  ctx.fillRect(glowX - 26, glowY + 8, 52, 12);
+  ctx.fillStyle = "#f2ca6d";
+  ctx.fillRect(glowX - 18, glowY - 4, 36, 4);
+  ctx.fillRect(glowX - 8, glowY - 16, 16, 36);
+
+  ctx.fillStyle = "rgba(255, 249, 213, 0.82)";
+  for (let i = 0; i < 16; i += 1) {
+    const drift = (elapsed / 55 + i * 19) % 130;
+    const x = glowX - 112 + ((i * 31) % 224);
+    const y = 154 - drift;
+    ctx.fillRect(Math.round(x / 4) * 4, Math.round(y / 4) * 4, 5, 5);
+  }
+
+  drawArkPlanPanel(planX, planY);
+}
+
+function drawArkPlanPanel(x, y) {
+  ctx.fillStyle = "rgba(33, 25, 22, 0.34)";
+  ctx.fillRect(x + 10, y + 10, 460, 286);
+  ctx.fillStyle = "rgba(255, 244, 216, 0.94)";
+  ctx.fillRect(x, y, 460, 286);
+  ctx.strokeStyle = "#211916";
+  ctx.lineWidth = 5;
+  ctx.strokeRect(x, y, 460, 286);
+  ctx.fillStyle = "#d5b477";
+  ctx.fillRect(x + 16, y + 16, 428, 254);
+  ctx.fillStyle = "#f8e6b2";
+  ctx.fillRect(x + 26, y + 26, 408, 234);
+
+  ctx.fillStyle = "#211916";
+  ctx.font = "bold 21px Courier New";
+  ctx.fillText("GENESIS 6 ARK PLAN", x + 46, y + 58);
+
+  ctx.font = "bold 15px Courier New";
+  const planItems = [
+    "GOPHER WOOD",
+    "ROOMS INSIDE",
+    "PITCH SEAL",
+    "3 DECKS",
+    "SIDE DOOR",
+    "TOP OPENING",
+    "FOOD STORES",
+  ];
+  planItems.forEach((item, index) => {
+    const iy = y + 92 + index * 24;
+    ctx.fillStyle = "#5b3925";
+    ctx.fillRect(x + 48, iy - 13, 13, 13);
+    ctx.fillStyle = "#211916";
+    ctx.fillText(item, x + 72, iy);
+  });
+
+  const bx = x + 258;
+  const by = y + 92;
+  ctx.strokeStyle = "#6f472f";
+  ctx.lineWidth = 5;
+  ctx.beginPath();
+  ctx.moveTo(bx, by + 84);
+  ctx.lineTo(bx + 34, by + 30);
+  ctx.lineTo(bx + 120, by + 10);
+  ctx.lineTo(bx + 164, by + 32);
+  ctx.lineTo(bx + 184, by + 84);
+  ctx.lineTo(bx + 152, by + 110);
+  ctx.lineTo(bx + 32, by + 110);
+  ctx.closePath();
+  ctx.stroke();
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.moveTo(bx + 26, by + 60);
+  ctx.lineTo(bx + 166, by + 60);
+  ctx.moveTo(bx + 40, by + 84);
+  ctx.lineTo(bx + 150, by + 84);
+  ctx.moveTo(bx + 94, by + 22);
+  ctx.lineTo(bx + 94, by + 110);
+  ctx.stroke();
+  ctx.fillStyle = "#6f472f";
+  ctx.fillRect(bx + 150, by + 70, 16, 32);
+  ctx.fillStyle = "#211916";
+  ctx.font = "bold 13px Courier New";
+  ctx.fillText("300 x 50 x 30", bx + 28, by + 146);
+  ctx.fillText("CUBITS", bx + 68, by + 164);
+  ctx.lineWidth = 1;
+}
+
+function startMaterialMinigame(type) {
+  hideDialogBox();
+  if (type === "wood") {
+    activeMinigame = { type, phase: "intro", marker: 0.08, dir: 1, hits: 0, misses: 0, needed: 8 };
+  }
+  if (type === "pitch") {
+    activeMinigame = { type, phase: "intro", gauge: 72, fallRate: 0.028, progress: 0, stirs: 0, overheated: 0, danger: 0, resets: 0, notice: "" };
+  }
+  if (type === "food") {
+    activeMinigame = {
+      type,
+      phase: "intro",
+      packed: 0,
+      misses: 0,
+      needed: 8,
+      order: randomFoodOrder(8),
+      buttons: [
+        { id: "grain", label: "GRAIN", x: 184, y: 362, w: 122, h: 64, color: "#d7ad5c" },
+        { id: "water", label: "WATER", x: 324, y: 362, w: 122, h: 64, color: "#6fb2c7" },
+        { id: "oil", label: "OIL", x: 464, y: 362, w: 122, h: 64, color: "#b87948" },
+        { id: "fruit", label: "FRUIT", x: 604, y: 362, w: 122, h: 64, color: "#b85c66" },
+      ],
+    };
+  }
+}
+
+function startBuildMinigame() {
+  hideDialogBox();
+  const slots = [
+    { id: "keel", x: 262, y: 386, w: 360, h: 24 },
+    { id: "rib1", x: 306, y: 264, w: 24, h: 136 },
+    { id: "rib2", x: 434, y: 230, w: 24, h: 170 },
+    { id: "rib3", x: 560, y: 264, w: 24, h: 136 },
+    { id: "deck1", x: 296, y: 342, w: 292, h: 18 },
+    { id: "deck2", x: 324, y: 302, w: 236, h: 18 },
+  ];
+  activeMinigame = {
+    type: "build",
+    phase: "intro",
+    slots,
+    pieces: slots.map((slot) => ({ ...slot, ...buildPieceStart(slot.id), placed: false })),
+  };
+}
+
+function startRoomsMinigame() {
+  hideDialogBox();
+  activeMinigame = {
+    type: "rooms",
+    phase: "intro",
+    placed: 0,
+    misses: 0,
+    pulse: 0,
+    lastPick: null,
+    rooms: shuffleList(roomPlanData()).map((room) => ({ ...room, complete: false })),
+  };
+}
+
+function startAnimalMinigame() {
+  hideDialogBox();
+  activeMinigame = {
+    type: "animals",
+    phase: "intro",
+    sorted: 0,
+    misses: 0,
+    lastChoice: null,
+    animals: shuffleList(animalSortData()),
+    rooms: [
+      { id: "clean", label: "CLEAN PAIRS", x: 186, y: 342, w: 222, h: 82 },
+      { id: "unclean", label: "UNCLEAN PAIRS", x: 488, y: 342, w: 222, h: 82 },
+    ],
+  };
+}
+
+function startSealMinigame() {
+  hideDialogBox();
+  activeMinigame = {
+    type: "seal",
+    phase: "intro",
+    coated: 0,
+    strokes: 0,
+    cells: sealCoatingCells(),
+    brush: { x: 448, y: 304 },
+  };
+}
+
+function startFinalStoresMinigame() {
+  hideDialogBox();
+  const roomTemplates = finalStoreRoomData();
+  const positions = shuffleList(roomTemplates.map(({ x, y, w, h }) => ({ x, y, w, h })));
+  const rooms = shuffleList(roomTemplates).map((room, index) => ({ ...room, ...positions[index] }));
+  activeMinigame = {
+    type: "stores",
+    phase: "intro",
+    loaded: 0,
+    misses: 0,
+    lastLoad: null,
+    rooms,
+    supplies: shuffleList(finalStoreSupplyData()),
+  };
+}
+
+function startEmbarkScene() {
+  journeyStarted = true;
+  embarkSceneActive = true;
+  embarkSceneStartedAt = performance.now();
+  activeMinigame = null;
+  updateHud();
+  writeSave();
+  setDialog([
+    "The final stores are loaded. Noah's family gathers at the side door of the ark.",
+    "The clean and unclean animal pairs are inside their rooms, with food and water set in order.",
+    "The ark is sealed and ready. Noah's family enters, and the journey is beginning.",
+  ]);
+}
+
+function shuffleList(items) {
+  const shuffled = [...items];
+  for (let i = shuffled.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+  }
+  return shuffled;
+}
+
+function sealCoatingCells() {
+  const cells = [];
+  for (let y = 214; y <= 388; y += 18) {
+    for (let x = 186; x <= 646; x += 18) {
+      const centerX = 416;
+      const top = 178 + Math.abs(x - centerX) * 0.2;
+      const bottom = 424 - Math.abs(x - centerX) * 0.08;
+      if (y >= top && y <= bottom) cells.push({ x, y, coated: false });
+    }
+  }
+  return cells;
+}
+
+function finalStoreRoomData() {
+  return [
+    { id: "family", label: "FAMILY FOOD", x: 214, y: 214, w: 130, h: 58, icon: "grain" },
+    { id: "animals", label: "ANIMAL FEED", x: 366, y: 292, w: 130, h: 58, icon: "large" },
+    { id: "birds", label: "BIRD SEED", x: 518, y: 214, w: 130, h: 58, icon: "birds" },
+    { id: "water", label: "WATER JARS", x: 366, y: 370, w: 130, h: 58, icon: "water" },
+  ];
+}
+
+function finalStoreSupplyData() {
+  return [
+    { id: "family", label: "BREAD, OIL, AND DRIED FRUIT", short: "FAMILY FOOD" },
+    { id: "animals", label: "HAY, GRAIN, AND FEED BASKETS", short: "ANIMAL FEED" },
+    { id: "birds", label: "SEED BAGS FOR BIRD ROOSTS", short: "BIRD SEED" },
+    { id: "water", label: "SEALED WATER JARS", short: "WATER JARS" },
+  ];
+}
+
+function roomPlanData() {
+  const deckNames = ["LOWER", "MIDDLE", "UPPER"];
+  const bayNames = ["LEFT", "CENTER", "RIGHT"];
+  const purposes = [
+    ["WATER JARS", "GRAIN BINS", "TOOL ROOM"],
+    ["LARGE ANIMALS", "FAMILY PASSAGE", "SMALL ANIMALS"],
+    ["BIRD ROOSTS", "WINDOW AIRWAY", "FOOD LEDGER"],
+  ];
+  const icons = [
+    ["water", "grain", "tools"],
+    ["large", "passage", "small"],
+    ["birds", "window", "ledger"],
+  ];
+  const rooms = [];
+  for (let deck = 0; deck < 3; deck += 1) {
+    for (let bay = 0; bay < 3; bay += 1) {
+      rooms.push({
+        id: `deck${deck}-bay${bay}`,
+        deck,
+        bay,
+        deckName: deckNames[deck],
+        bayName: bayNames[bay],
+        purpose: purposes[deck][bay],
+        icon: icons[deck][bay],
+      });
+    }
+  }
+  return rooms;
+}
+
+function animalSortData() {
+  return [
+    { name: "Cattle", kind: "clean", note: "clean land animal", body: "#b98256", accent: "#fff4d8", shape: "cattle" },
+    { name: "Sheep", kind: "clean", note: "clean flock animal", body: "#f1e5c7", accent: "#5b4636", shape: "sheep" },
+    { name: "Goats", kind: "clean", note: "clean flock animal", body: "#d8c096", accent: "#4b3022", shape: "goat" },
+    { name: "Doves", kind: "clean", note: "clean birds", body: "#f8f0dc", accent: "#7a8f9a", shape: "dove" },
+    { name: "Camels", kind: "unclean", note: "unclean animal", body: "#c69258", accent: "#6b442c", shape: "camel" },
+    { name: "Horses", kind: "unclean", note: "unclean animal", body: "#7a5137", accent: "#211916", shape: "horse" },
+    { name: "Ravens", kind: "unclean", note: "unclean birds", body: "#252525", accent: "#6b6f78", shape: "raven" },
+    { name: "Lizards", kind: "unclean", note: "unclean creeping animal", body: "#6f8b4a", accent: "#31452c", shape: "lizard" },
+  ];
+}
+
+function randomFoodOrder(length) {
+  const supplies = ["grain", "water", "oil", "fruit"];
+  const order = [];
+  let previous = "";
+  while (order.length < length) {
+    const choices = supplies.filter((item) => item !== previous);
+    const next = choices[Math.floor(Math.random() * choices.length)];
+    order.push(next);
+    previous = next;
+  }
+  return order;
+}
+
+function buildPieceStart(id) {
+  const starts = {
+    keel: { x: 66, y: 154 },
+    rib1: { x: 96, y: 220 },
+    rib2: { x: 142, y: 202 },
+    rib3: { x: 190, y: 220 },
+    deck1: { x: 66, y: 392 },
+    deck2: { x: 92, y: 442 },
+  };
+  return starts[id] || { x: 66, y: 154 };
+}
+
+function updateMinigame(delta) {
+  if (!activeMinigame) return;
+  if (activeMinigame.phase === "intro") return;
+  if (activeMinigame.type === "wood") {
+    activeMinigame.marker += activeMinigame.dir * delta * 0.0007;
+    if (activeMinigame.marker >= 1) {
+      activeMinigame.marker = 1;
+      activeMinigame.dir = -1;
+    }
+    if (activeMinigame.marker <= 0) {
+      activeMinigame.marker = 0;
+      activeMinigame.dir = 1;
+    }
+  }
+  if (activeMinigame.type === "pitch") {
+    activeMinigame.gauge -= delta * activeMinigame.fallRate;
+    activeMinigame.gauge = Math.max(0, Math.min(100, activeMinigame.gauge));
+    if (activeMinigame.gauge >= 38 && activeMinigame.gauge <= 66) {
+      activeMinigame.progress += delta * 0.008;
+      activeMinigame.danger = Math.max(0, activeMinigame.danger - delta * 0.018);
+      activeMinigame.notice = "";
+    } else {
+      activeMinigame.progress = Math.max(0, activeMinigame.progress - delta * 0.006);
+      activeMinigame.overheated += delta;
+      activeMinigame.danger += delta * 0.018;
+      activeMinigame.notice = activeMinigame.gauge < 38 ? "Too cool. Stoke the fire upward." : "Too hot. Let it fall into the gold band.";
+      if (activeMinigame.danger >= 100) resetPitchMinigame();
+    }
+    if (activeMinigame.progress >= 100) {
+      completeMaterialMinigame("pitch", 4);
+      return;
+    }
+  }
+  if (activeMinigame.type === "rooms") {
+    activeMinigame.pulse += delta * 0.006;
+  }
+}
+
+function resetPitchMinigame() {
+  const resets = (activeMinigame.resets || 0) + 1;
+  activeMinigame.gauge = 72;
+  activeMinigame.fallRate = 0.028;
+  activeMinigame.progress = 0;
+  activeMinigame.danger = 0;
+  activeMinigame.stirs = 0;
+  activeMinigame.overheated = 0;
+  activeMinigame.resets = resets;
+  activeMinigame.notice = "Pitch cooled unevenly. Start this batch again.";
+}
+
+function handleMinigameAction(point = null) {
+  if (!activeMinigame) return false;
+  if (activeMinigame.phase === "intro") {
+    if (!point || isInsideRect(point, startButtonRect())) {
+      activeMinigame.phase = "play";
+    }
+    return true;
+  }
+  if (activeMinigame.type === "wood") {
+    if (point) return true;
+    if (activeMinigame.marker >= 0.42 && activeMinigame.marker <= 0.58) {
+      activeMinigame.hits += 1;
+    } else {
+      activeMinigame.misses += 1;
+      activeMinigame.hits = Math.max(0, activeMinigame.hits - 1);
+    }
+    if (activeMinigame.hits >= activeMinigame.needed) completeMaterialMinigame("wood", 4);
+    return true;
+  }
+  if (activeMinigame.type === "pitch") {
+    activeMinigame.gauge = Math.min(94, activeMinigame.gauge + 18);
+    activeMinigame.notice = "Fire stoked. Heat jumped upward.";
+    activeMinigame.stirs += 1;
+    return true;
+  }
+  if (activeMinigame.type === "food" && point) {
+    const clicked = activeMinigame.buttons.find((button) => point.x >= button.x && point.x <= button.x + button.w && point.y >= button.y && point.y <= button.y + button.h);
+    if (!clicked) return true;
+    const expected = activeMinigame.order[activeMinigame.packed];
+    if (clicked.id === expected) {
+      activeMinigame.packed += 1;
+    } else {
+      activeMinigame.misses += 1;
+    }
+    if (activeMinigame.packed >= activeMinigame.needed) completeMaterialMinigame("food", 3);
+    return true;
+  }
+  if (activeMinigame.type === "rooms" && point) {
+    const clicked = roomAtPoint(point);
+    if (!clicked) return true;
+    const expected = activeMinigame.rooms[activeMinigame.placed];
+    if (clicked.id === expected.id) {
+      clicked.complete = true;
+      activeMinigame.placed += 1;
+      activeMinigame.lastPick = { ok: true, text: "Room picture matched." };
+    } else {
+      activeMinigame.misses += 1;
+      activeMinigame.lastPick = { ok: false, text: "Check the picture again." };
+    }
+    if (activeMinigame.placed >= activeMinigame.rooms.length) completeRoomsMinigame();
+    return true;
+  }
+  if (activeMinigame.type === "animals" && point) {
+    const room = animalRoomAtPoint(point);
+    if (!room) return true;
+    const animal = activeMinigame.animals[activeMinigame.sorted];
+    if (room.id === animal.kind) {
+      activeMinigame.sorted += 1;
+      activeMinigame.lastChoice = { ok: true, text: `${animal.name} guided to ${room.label.toLowerCase()}.` };
+    } else {
+      activeMinigame.misses += 1;
+      activeMinigame.lastChoice = { ok: false, text: `${animal.name} belong with ${animal.kind} pairs.` };
+    }
+    if (activeMinigame.sorted >= activeMinigame.animals.length) completeAnimalMinigame();
+    return true;
+  }
+  if (activeMinigame.type === "seal" && point) {
+    coatPitchAt(point);
+    return true;
+  }
+  if (activeMinigame.type === "stores" && point) {
+    const room = finalStoreRoomAtPoint(point);
+    if (!room) return true;
+    const supply = activeMinigame.supplies[activeMinigame.loaded];
+    if (room.id === supply.id) {
+      activeMinigame.loaded += 1;
+      activeMinigame.lastLoad = { ok: true, text: `${supply.short} loaded into place.` };
+    } else {
+      activeMinigame.misses += 1;
+      activeMinigame.lastLoad = { ok: false, text: `That store belongs in the ${supply.short.toLowerCase()} room.` };
+    }
+    if (activeMinigame.loaded >= activeMinigame.supplies.length) completeFinalStoresMinigame();
+    return true;
+  }
+  return false;
+}
+
+function roomAtPoint(point) {
+  if (!activeMinigame || activeMinigame.type !== "rooms") return null;
+  return activeMinigame.rooms.find((room) => isInsideRect(point, roomRect(room)));
+}
+
+function roomRect(room) {
+  return {
+    x: 224 + room.bay * 148,
+    y: 184 + room.deck * 58,
+    w: 138,
+    h: 48,
+  };
+}
+
+function animalRoomAtPoint(point) {
+  if (!activeMinigame || activeMinigame.type !== "animals") return null;
+  return activeMinigame.rooms.find((room) => isInsideRect(point, room));
+}
+
+function coatPitchAt(point) {
+  if (!activeMinigame || activeMinigame.type !== "seal" || !point) return;
+  activeMinigame.brush = { x: point.x, y: point.y };
+  activeMinigame.strokes += 1;
+  let added = 0;
+  activeMinigame.cells.forEach((cell) => {
+    if (cell.coated) return;
+    const dx = point.x - cell.x;
+    const dy = point.y - cell.y;
+    if (Math.sqrt(dx * dx + dy * dy) <= 34) {
+      cell.coated = true;
+      added += 1;
+    }
+  });
+  activeMinigame.coated += added;
+  if (activeMinigame.coated / activeMinigame.cells.length >= 0.86) completeSealMinigame();
+}
+
+function finalStoreRoomAtPoint(point) {
+  if (!activeMinigame || activeMinigame.type !== "stores") return null;
+  return activeMinigame.rooms.find((room) => isInsideRect(point, room));
+}
+
+function isInsideRect(point, rect) {
+  return point.x >= rect.x && point.x <= rect.x + rect.w && point.y >= rect.y && point.y <= rect.y + rect.h;
+}
+
+function startButtonRect() {
+  return { x: 356, y: 418, w: 184, h: 52 };
+}
+
+function completeMaterialMinigame(type, amount) {
+  materials[type] = Math.min(requiredMaterials[type], materials[type] + amount);
+  activeMinigame = null;
+  updateHud();
+  writeSave();
+  const names = { wood: "gopher wood", pitch: "pitch", food: "food stores" };
+  setDialog([
+    `Collected ${amount} ${names[type]}.`,
+    `Current supplies: wood ${materials.wood}/${requiredMaterials.wood}, pitch ${materials.pitch}/${requiredMaterials.pitch}, food ${materials.food}/${requiredMaterials.food}.`,
+    hasAllMaterials() ? "All materials for this stage are ready. Return to the ark frame at the worksite." : "Keep gathering until every supply is ready.",
+  ]);
+}
+
+function completeBuildMinigame() {
+  buildComplete = true;
+  activeMinigame = null;
+  updateHud();
+  writeSave();
+  setDialog([
+    "Noah and his family set the first ark frame together.",
+    "The long shape, ribs, and decks are now started. The gathered materials are enough for this stage.",
+    "Next: return to the marked worksite and plan rooms inside the ark.",
+  ]);
+}
+
+function completeRoomsMinigame() {
+  roomsComplete = true;
+  activeMinigame = null;
+  updateHud();
+  writeSave();
+  setDialog([
+    "Rooms are measured across the lower, middle, and upper decks.",
+    "There is space for food stores, family passage, birds, and different animal groups.",
+    "Next: sort clean and unclean animal pairs into the rooms that were prepared.",
+  ]);
+}
+
+function completeAnimalMinigame() {
+  animalsComplete = true;
+  activeMinigame = null;
+  updateHud();
+  writeSave();
+  setDialog([
+    "The selected clean and unclean animal pairs are guided into prepared rooms.",
+    "Genesis describes clean and unclean animals before the flood; these pairs are now set in order.",
+    "Next: seal the ark inside and outside with pitch.",
+  ]);
+}
+
+function completeSealMinigame() {
+  sealComplete = true;
+  activeMinigame = null;
+  updateHud();
+  writeSave();
+  setDialog([
+    "The ark is sealed inside and outside with pitch.",
+    "The seams, side door, and top opening have been carefully covered for the journey ahead.",
+    "Next: load the final food and water stores into the rooms.",
+  ]);
+}
+
+function completeFinalStoresMinigame() {
+  finalStoresComplete = true;
+  activeMinigame = null;
+  updateHud();
+  writeSave();
+  setDialog([
+    "The final food, feed, seed, and water stores are loaded into the ark.",
+    "Everything needed for this stage is now in place.",
+    "Next: return to the worksite marker and enter the ark.",
+  ]);
+}
+
+function drawMinigame() {
+  ctx.fillStyle = "rgba(33, 25, 22, 0.72)";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.fillStyle = "#fff9e8";
+  ctx.fillRect(56, 48, canvas.width - 112, canvas.height - 96);
+  ctx.strokeStyle = "#211916";
+  ctx.lineWidth = 5;
+  ctx.strokeRect(56, 48, canvas.width - 112, canvas.height - 96);
+  ctx.fillStyle = "#211916";
+  ctx.font = "bold 22px Courier New";
+
+  if (activeMinigame.phase === "intro") {
+    drawMinigameIntro();
+    ctx.lineWidth = 1;
+    return;
+  }
+  if (activeMinigame.type === "wood") drawWoodMinigame();
+  if (activeMinigame.type === "pitch") drawPitchMinigame();
+  if (activeMinigame.type === "food") drawFoodMinigame();
+  if (activeMinigame.type === "build") drawBuildMinigame();
+  if (activeMinigame.type === "rooms") drawRoomsMinigame();
+  if (activeMinigame.type === "animals") drawAnimalMinigame();
+  if (activeMinigame.type === "seal") drawSealMinigame();
+  if (activeMinigame.type === "stores") drawFinalStoresMinigame();
+  ctx.lineWidth = 1;
+}
+
+function drawMinigameIntro() {
+  const copy = {
+    wood: {
+      title: "WOOD CHOPPING",
+      lines: [
+        "Goal: cut usable gopher wood for the ark.",
+        "Watch the moving marker.",
+        "Press Space or Enter when it is inside the gold cut zone.",
+        "Good cuts add progress. Misses slow you down.",
+      ],
+    },
+    pitch: {
+      title: "PITCH PREPARATION",
+      lines: [
+        "Goal: prepare sticky pitch to seal the ark.",
+        "The heat meter constantly falls at a steady pace.",
+        "Keep the red heat level inside the gold safe band.",
+        "Press Space, Enter, or click to stoke the fire upward.",
+        "If it gets too hot, wait for the meter to fall.",
+        "If it stays outside the safe band too long, the batch resets.",
+      ],
+    },
+    food: {
+      title: "FOOD PACKING",
+      lines: [
+        "Goal: pack food stores for Noah's family and the animals.",
+        "Look at the next supply name.",
+        "Click the matching crate.",
+        "Pack the list in order.",
+      ],
+    },
+    build: {
+      title: "ARK FRAME ASSEMBLY",
+      lines: [
+        "Goal: raise the first ark frame from the gathered timber.",
+        "Drag each timber from the left side.",
+        "Drop it on the matching outline.",
+        "This starts the structure; the ark is not finished yet.",
+      ],
+    },
+    rooms: {
+      title: "ROOMS INSIDE THE ARK",
+      lines: [
+        "Goal: plan rooms on the lower, middle, and upper decks.",
+        "Read the room plan card on the right.",
+        "Click the room with the matching picture.",
+        "The room plans come in a new order each time.",
+        "This follows God's command to build rooms inside the ark.",
+      ],
+    },
+    animals: {
+      title: "ANIMAL ROOM SORTING",
+      lines: [
+        "Goal: guide a small set of animal pairs into prepared rooms.",
+        "Genesis names clean and unclean animals before the flood.",
+        "Click CLEAN PAIRS or UNCLEAN PAIRS for each animal.",
+        "The animal order changes each time.",
+        "Keep the ark rooms ordered and ready.",
+      ],
+    },
+    seal: {
+      title: "SEAL THE ARK",
+      lines: [
+        "Goal: coat the ark with prepared pitch.",
+        "Genesis says to cover the ark inside and outside with pitch.",
+        "Hold and drag the pitch brush across the ark.",
+        "Darken enough of the wood to finish the seal.",
+      ],
+    },
+    stores: {
+      title: "FINAL STORES",
+      lines: [
+        "Goal: place the last food and water stores into prepared rooms.",
+        "Read the current supply card.",
+        "Click the room that matches that supply.",
+        "The supply order and room positions change each time.",
+      ],
+    },
+  }[activeMinigame.type];
+
+  ctx.fillStyle = "rgba(255, 249, 232, 0.96)";
+  ctx.fillRect(142, 112, 612, 360);
+  ctx.strokeStyle = "#211916";
+  ctx.lineWidth = 4;
+  ctx.strokeRect(142, 112, 612, 360);
+  ctx.fillStyle = "#211916";
+  ctx.font = "bold 24px Courier New";
+  ctx.fillText(copy.title, 184, 164);
+  ctx.font = "bold 17px Courier New";
+  copy.lines.forEach((line, index) => {
+    drawWrappedCanvasText(line, 184, 204 + index * 42, 532, 20, 2);
+  });
+  const button = startButtonRect();
+  ctx.fillStyle = "#e8b85f";
+  ctx.fillRect(button.x, button.y, button.w, button.h);
+  ctx.strokeStyle = "#211916";
+  ctx.lineWidth = 4;
+  ctx.strokeRect(button.x, button.y, button.w, button.h);
+  ctx.fillStyle = "#211916";
+  ctx.font = "bold 18px Courier New";
+  ctx.fillText("START TASK", button.x + 34, button.y + 33);
+}
+
+function drawWoodMinigame() {
+  ctx.fillText("CHOP GOPHER WOOD", 92, 92);
+  drawInstruction("Press Space or Enter when the axe marker is inside the gold cut zone.", 92, 126);
+  const barX = 152;
+  const barY = 244;
+  const barW = 592;
+  ctx.fillStyle = "#8b5b3e";
+  ctx.fillRect(barX, barY, barW, 34);
+  ctx.fillStyle = "#f0c66e";
+  ctx.fillRect(barX + barW * 0.42, barY - 8, barW * 0.16, 50);
+  ctx.fillStyle = "#211916";
+  const markerX = barX + activeMinigame.marker * barW;
+  ctx.fillRect(markerX - 5, barY - 24, 10, 82);
+  ctx.fillStyle = "#6f472f";
+  ctx.fillRect(260, 350, 376, 34);
+  ctx.fillStyle = "#4a3022";
+  for (let i = 0; i < activeMinigame.hits; i += 1) ctx.fillRect(276 + i * 43, 342, 28, 50);
+  drawInstruction(`Clean cuts: ${activeMinigame.hits}/${activeMinigame.needed}   Misses: ${activeMinigame.misses}`, 264, 432);
+}
+
+function drawPitchMinigame() {
+  ctx.fillText("PREPARE PITCH", 92, 92);
+  drawInstruction("The heat falls constantly. Press Space, Enter, or click to stoke it upward.", 92, 108);
+  drawInstruction("Keep the red heat inside the gold safe band. If it gets too hot, wait.", 92, 126);
+  const x = 210;
+  const y = 184;
+  ctx.fillStyle = "#3a2721";
+  ctx.fillRect(x, y, 120, 250);
+  ctx.fillStyle = "#f0c66e";
+  ctx.fillRect(x - 12, y + 85, 144, 72);
+  ctx.fillStyle = "#211916";
+  ctx.font = "bold 11px Courier New";
+  ctx.fillText("SAFE HEAT", x + 20, y + 126);
+  ctx.fillStyle = "#8d4830";
+  const gaugeH = 250 * (activeMinigame.gauge / 100);
+  ctx.fillRect(x, y + 250 - gaugeH, 120, gaugeH);
+  ctx.strokeStyle = "#211916";
+  ctx.strokeRect(x, y, 120, 250);
+  ctx.fillStyle = "#211916";
+  ctx.font = "bold 16px Courier New";
+  ctx.fillText("COOL", x + 38, y + 274);
+  ctx.fillText("HOT", x + 42, y - 12);
+
+  ctx.fillStyle = "#fff4d8";
+  ctx.fillRect(386, 162, 344, 92);
+  ctx.strokeStyle = "#211916";
+  ctx.lineWidth = 3;
+  ctx.strokeRect(386, 162, 344, 92);
+  ctx.font = "bold 13px Courier New";
+  ctx.fillText("If red leaves gold, danger rises.", 404, 190);
+  ctx.fillText("Space/click: stoke heat upward.", 404, 214);
+  ctx.fillText("Too hot: wait while the heat falls.", 404, 238);
+
+  drawPitchVat(474, 278);
+
+  drawProgressBar(444, 394, 260, 24, activeMinigame.progress / 100, "SEALED PITCH");
+  drawProgressBar(444, 430, 260, 18, activeMinigame.danger / 100, "BATCH DANGER");
+  if (activeMinigame.notice) {
+    ctx.fillStyle = "#a53d3b";
+    ctx.font = "bold 12px Courier New";
+    drawWrappedCanvasText(activeMinigame.notice, 390, 354, 318, 14, 2);
+  }
+  if (activeMinigame.resets > 0) {
+    ctx.fillStyle = "#211916";
+    ctx.font = "bold 12px Courier New";
+    ctx.fillText(`Resets: ${activeMinigame.resets}`, 604, 378);
+  }
+}
+
+function drawPitchVat(x, y) {
+  ctx.fillStyle = "rgba(33, 25, 22, 0.18)";
+  ctx.fillRect(x + 10, y + 74, 166, 12);
+  ctx.fillStyle = "#6b442c";
+  ctx.fillRect(x + 72, y - 26, 12, 84);
+  ctx.fillStyle = "#3a2721";
+  ctx.fillRect(x + 28, y + 28, 118, 46);
+  ctx.fillStyle = "#211916";
+  ctx.fillRect(x + 18, y + 18, 138, 24);
+  ctx.fillStyle = "#17110f";
+  ctx.fillRect(x + 34, y + 22, 106, 18);
+  ctx.fillStyle = "#5b3925";
+  ctx.fillRect(x + 38, y + 42, 98, 28);
+  ctx.strokeStyle = "#211916";
+  ctx.lineWidth = 3;
+  ctx.strokeRect(x + 28, y + 28, 118, 46);
+  ctx.fillStyle = "#f0c66e";
+  ctx.fillRect(x + 56, y + 88, 62, 10);
+  ctx.fillStyle = "#c75f33";
+  ctx.fillRect(x + 70, y + 78, 34, 18);
+  ctx.fillStyle = "#211916";
+  ctx.font = "bold 12px Courier New";
+  ctx.fillText("PITCH VAT", x + 42, y + 116);
+}
+
+function drawFoodMinigame() {
+  const next = activeMinigame.order[activeMinigame.packed] || "done";
+  ctx.fillText("PACK FOOD STORES", 92, 92);
+  drawInstruction("Click the crate that matches the next supply. Pack carefully for people and animals.", 92, 126);
+
+  ctx.save();
+  ctx.textAlign = "center";
+  ctx.fillStyle = "#5b3925";
+  ctx.font = "bold 14px Courier New";
+  ctx.fillText("NEEDED NOW", canvas.width / 2, 176);
+  ctx.fillStyle = "#211916";
+  ctx.font = "bold 38px Courier New";
+  ctx.fillText(next.toUpperCase(), canvas.width / 2, 220);
+  ctx.font = "bold 15px Courier New";
+  ctx.fillText(`Packed: ${activeMinigame.packed}/${activeMinigame.needed}     Mistakes: ${activeMinigame.misses}`, canvas.width / 2, 258);
+  ctx.restore();
+
+  drawProgressBar(286, 280, 324, 22, activeMinigame.packed / activeMinigame.needed, "FOOD PACKED");
+
+  activeMinigame.buttons.forEach((button) => {
+    ctx.fillStyle = "rgba(33, 25, 22, 0.2)";
+    ctx.fillRect(button.x + 5, button.y + 6, button.w, button.h);
+    ctx.fillStyle = button.color;
+    ctx.fillRect(button.x, button.y, button.w, button.h);
+    ctx.strokeStyle = "#211916";
+    ctx.lineWidth = 3;
+    ctx.strokeRect(button.x, button.y, button.w, button.h);
+    ctx.fillStyle = "rgba(255, 249, 232, 0.34)";
+    ctx.fillRect(button.x + 6, button.y + 6, button.w - 12, 14);
+    drawFoodButtonIcon(button.id, button.x + 18, button.y + 25);
+    ctx.fillStyle = "#211916";
+    ctx.font = "bold 15px Courier New";
+    ctx.fillText(button.label, button.x + 48, button.y + 40);
+  });
+}
+
+function drawFoodButtonIcon(type, x, y) {
+  ctx.save();
+  ctx.strokeStyle = "#211916";
+  ctx.lineWidth = 2;
+  if (type === "grain") {
+    ctx.fillStyle = "#f2cf75";
+    ctx.fillRect(x + 3, y + 8, 22, 16);
+    ctx.strokeRect(x + 3, y + 8, 22, 16);
+    ctx.fillStyle = "#8b5b3e";
+    ctx.fillRect(x + 7, y + 4, 4, 8);
+    ctx.fillRect(x + 14, y + 2, 4, 10);
+    ctx.fillRect(x + 20, y + 5, 4, 7);
+  } else if (type === "water") {
+    ctx.fillStyle = "#d9f0f0";
+    ctx.beginPath();
+    ctx.moveTo(x + 14, y + 3);
+    ctx.quadraticCurveTo(x + 27, y + 18, x + 14, y + 28);
+    ctx.quadraticCurveTo(x + 1, y + 18, x + 14, y + 3);
+    ctx.fill();
+    ctx.stroke();
+  } else if (type === "oil") {
+    ctx.fillStyle = "#8b5b3e";
+    ctx.fillRect(x + 8, y + 5, 12, 7);
+    ctx.fillStyle = "#f0c66e";
+    ctx.fillRect(x + 5, y + 12, 18, 17);
+    ctx.strokeRect(x + 5, y + 12, 18, 17);
+  } else {
+    ctx.fillStyle = "#7f2f42";
+    ctx.beginPath();
+    ctx.arc(x + 10, y + 18, 8, 0, Math.PI * 2);
+    ctx.arc(x + 20, y + 17, 8, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = "#3f7445";
+    ctx.fillRect(x + 17, y + 6, 7, 4);
+  }
+  ctx.restore();
+}
+
+function drawRoomsMinigame() {
+  const current = activeMinigame.rooms[activeMinigame.placed];
+  ctx.fillText("BUILD ROOMS INSIDE THE ARK", 92, 92);
+  drawInstruction("Match the plan picture to the same picture inside the ark.", 92, 126);
+
+  drawArkRoomShell(170, 154);
+  activeMinigame.rooms.forEach((room) => drawRoomCell(room, current));
+
+  drawBlueprintCard(current, 620, 152);
+  drawProgressBar(190, 432, 302, 22, activeMinigame.placed / activeMinigame.rooms.length, "ROOMS PLANNED");
+  drawInstruction(`Rooms: ${activeMinigame.placed}/${activeMinigame.rooms.length}   Rechecks: ${activeMinigame.misses}`, 520, 448);
+  if (activeMinigame.lastPick) {
+    ctx.fillStyle = activeMinigame.lastPick.ok ? "#3f7445" : "#a53d3b";
+    ctx.font = "bold 13px Courier New";
+    drawWrappedCanvasText(activeMinigame.lastPick.text, 620, 386, 190, 15, 2);
+  }
+}
+
+function drawBlueprintCard(room, x, y) {
+  ctx.fillStyle = "#fff4d8";
+  ctx.fillRect(x, y, 196, 220);
+  ctx.strokeStyle = "#211916";
+  ctx.lineWidth = 4;
+  ctx.strokeRect(x, y, 196, 220);
+  ctx.fillStyle = "#d5b477";
+  ctx.fillRect(x + 12, y + 12, 172, 196);
+  ctx.fillStyle = "#fff9e8";
+  ctx.fillRect(x + 20, y + 20, 156, 180);
+  ctx.fillStyle = "#211916";
+  ctx.font = "bold 13px Courier New";
+  ctx.fillText("ROOM PLAN", x + 52, y + 42);
+  if (!room) return;
+  ctx.strokeStyle = "#8b5b3e";
+  ctx.lineWidth = 3;
+  ctx.strokeRect(x + 46, y + 72, 104, 92);
+  drawRoomIcon(room.icon, x + 82, y + 92, 1.55);
+  ctx.fillStyle = "#211916";
+  ctx.font = "bold 12px Courier New";
+  ctx.fillText(`ROOM ${room.deck * 3 + room.bay + 1}`, x + 68, y + 188);
+}
+
+function drawArkRoomShell(x, y) {
+  ctx.fillStyle = "#7a5439";
+  ctx.beginPath();
+  ctx.moveTo(x + 28, y + 184);
+  ctx.lineTo(x + 64, y + 88);
+  ctx.quadraticCurveTo(x + 236, y + 28, x + 408, y + 88);
+  ctx.lineTo(x + 444, y + 184);
+  ctx.quadraticCurveTo(x + 360, y + 212, x + 112, y + 212);
+  ctx.closePath();
+  ctx.fill();
+  ctx.strokeStyle = "#211916";
+  ctx.lineWidth = 5;
+  ctx.stroke();
+  ctx.fillStyle = "#c28a55";
+  ctx.fillRect(x + 58, y + 82, 356, 120);
+  ctx.strokeStyle = "#4b3022";
+  ctx.lineWidth = 4;
+  ctx.strokeRect(x + 58, y + 82, 356, 120);
+}
+
+function drawRoomCell(room, current) {
+  const rect = roomRect(room);
+  ctx.fillStyle = room.complete ? "#7fa05b" : "#ead393";
+  ctx.fillRect(rect.x, rect.y, rect.w, rect.h);
+  ctx.strokeStyle = "#5b3925";
+  ctx.lineWidth = 3;
+  ctx.strokeRect(rect.x, rect.y, rect.w, rect.h);
+  ctx.fillStyle = "#211916";
+  drawRoomIcon(room.icon, rect.x + 48, rect.y + 13, 1.05);
+}
+
+function drawRoomIcon(icon, x, y, scale) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.scale(scale, scale);
+  ctx.fillStyle = "#5b3925";
+  if (icon === "water") {
+    ctx.fillRect(4, 10, 14, 22);
+    ctx.fillRect(8, 4, 6, 8);
+    ctx.fillStyle = "#4ea3ba";
+    ctx.fillRect(7, 18, 8, 8);
+  } else if (icon === "grain") {
+    ctx.fillRect(2, 16, 26, 14);
+    ctx.fillStyle = "#e8b85f";
+    for (let i = 0; i < 5; i += 1) ctx.fillRect(5 + i * 4, 8 + (i % 2) * 3, 3, 10);
+  } else if (icon === "tools") {
+    ctx.fillRect(6, 6, 4, 26);
+    ctx.fillRect(18, 6, 4, 26);
+    ctx.fillRect(2, 8, 14, 4);
+    ctx.fillRect(16, 24, 12, 4);
+  } else if (icon === "large") {
+    ctx.fillRect(2, 15, 28, 12);
+    ctx.fillRect(22, 8, 10, 10);
+    ctx.fillRect(6, 26, 5, 9);
+    ctx.fillRect(21, 26, 5, 9);
+  } else if (icon === "passage") {
+    ctx.strokeStyle = "#5b3925";
+    ctx.lineWidth = 5;
+    ctx.beginPath();
+    ctx.moveTo(4, 28);
+    ctx.lineTo(16, 8);
+    ctx.lineTo(28, 28);
+    ctx.stroke();
+    ctx.fillRect(13, 21, 6, 11);
+  } else if (icon === "small") {
+    ctx.fillRect(7, 18, 18, 8);
+    ctx.fillRect(20, 12, 8, 8);
+    ctx.fillRect(10, 25, 4, 7);
+    ctx.fillRect(20, 25, 4, 7);
+  } else if (icon === "birds") {
+    ctx.beginPath();
+    ctx.ellipse(14, 18, 12, 7, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.ellipse(24, 13, 7, 6, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "#d89a3c";
+    ctx.beginPath();
+    ctx.moveTo(29, 13);
+    ctx.lineTo(36, 16);
+    ctx.lineTo(29, 19);
+    ctx.fill();
+  } else if (icon === "window") {
+    ctx.fillRect(5, 7, 24, 24);
+    ctx.fillStyle = "#fff9e8";
+    ctx.fillRect(10, 12, 14, 14);
+    ctx.fillStyle = "#5fb8c7";
+    ctx.fillRect(12, 14, 10, 10);
+  } else if (icon === "ledger") {
+    ctx.fillRect(5, 4, 22, 28);
+    ctx.fillStyle = "#fff9e8";
+    ctx.fillRect(9, 8, 14, 20);
+    ctx.fillStyle = "#5b3925";
+    ctx.fillRect(11, 12, 10, 2);
+    ctx.fillRect(11, 18, 10, 2);
+    ctx.fillRect(11, 24, 7, 2);
+  }
+  ctx.restore();
+}
+
+function drawAnimalMinigame() {
+  const animal = activeMinigame.animals[activeMinigame.sorted];
+  ctx.fillText("SORT CLEAN AND UNCLEAN PAIRS", 92, 92);
+  drawInstruction("Click the room that matches the current animal pair.", 92, 126);
+
+  drawAnimalArkRooms();
+  if (animal) {
+    drawAnimalCard(animal, 328, 154);
+    drawInstruction(`Current pair: ${animal.name.toUpperCase()}   Sorted: ${activeMinigame.sorted}/${activeMinigame.animals.length}   Rechecks: ${activeMinigame.misses}`, 176, 462);
+  }
+  activeMinigame.rooms.forEach((room) => drawAnimalSortRoom(room));
+  if (activeMinigame.lastChoice) {
+    ctx.fillStyle = activeMinigame.lastChoice.ok ? "#3f7445" : "#a53d3b";
+    ctx.font = "bold 13px Courier New";
+    drawWrappedCanvasText(activeMinigame.lastChoice.text, 322, 424, 260, 15, 2);
+  }
+}
+
+function drawAnimalArkRooms() {
+  ctx.fillStyle = "#7a5439";
+  ctx.beginPath();
+  ctx.moveTo(132, 404);
+  ctx.lineTo(184, 258);
+  ctx.lineTo(448, 198);
+  ctx.lineTo(714, 258);
+  ctx.lineTo(764, 404);
+  ctx.closePath();
+  ctx.fill();
+  ctx.strokeStyle = "#211916";
+  ctx.lineWidth = 5;
+  ctx.stroke();
+  ctx.fillStyle = "#bf8754";
+  ctx.fillRect(170, 282, 556, 134);
+  ctx.strokeStyle = "#4b3022";
+  ctx.lineWidth = 4;
+  ctx.strokeRect(170, 282, 556, 134);
+  ctx.fillStyle = "#ead393";
+  ctx.fillRect(432, 214, 32, 38);
+  ctx.strokeStyle = "#211916";
+  ctx.strokeRect(432, 214, 32, 38);
+}
+
+function drawAnimalSortRoom(room) {
+  ctx.fillStyle = room.id === "clean" ? "#d8c096" : "#b98c64";
+  ctx.fillRect(room.x, room.y, room.w, room.h);
+  ctx.strokeStyle = "#211916";
+  ctx.lineWidth = 4;
+  ctx.strokeRect(room.x, room.y, room.w, room.h);
+  ctx.fillStyle = "rgba(255, 244, 216, 0.42)";
+  for (let i = 0; i < 4; i += 1) {
+    ctx.fillRect(room.x + 18 + i * 46, room.y + 18, 28, 8);
+    ctx.fillRect(room.x + 18 + i * 46, room.y + 44, 28, 8);
+  }
+  ctx.fillStyle = "#211916";
+  ctx.font = "bold 15px Courier New";
+  ctx.fillText(room.label, room.x + 38, room.y + 50);
+}
+
+function drawAnimalCard(animal, x, y) {
+  ctx.fillStyle = "#fff4d8";
+  ctx.fillRect(x, y, 248, 236);
+  ctx.strokeStyle = "#211916";
+  ctx.lineWidth = 4;
+  ctx.strokeRect(x, y, 248, 236);
+  ctx.fillStyle = "#211916";
+  ctx.font = "bold 18px Courier New";
+  drawFittedText(animal.name.toUpperCase(), x + 20, y + 34, 200, 18);
+  ctx.font = "bold 12px Courier New";
+  drawWrappedCanvasText(animal.note, x + 20, y + 58, 200, 15, 2);
+  drawAnimalPair(animal, x + 30, y + 98);
+  ctx.fillStyle = "#6f472f";
+  ctx.fillRect(x + 20, y + 210, 208, 8);
+}
+
+function drawSealMinigame() {
+  const progress = activeMinigame.coated / activeMinigame.cells.length;
+  const brush = activeMinigame.brush || { x: 448, y: 304 };
+  ctx.fillText("SEAL THE ARK WITH PITCH", 92, 92);
+  drawInstruction("Drag the pitch brush across the ark until the wood is coated.", 92, 126);
+
+  drawLargeArkSide(150, 162, false);
+  activeMinigame.cells.forEach((cell) => {
+    ctx.fillStyle = cell.coated ? "rgba(18, 15, 14, 0.88)" : "rgba(255, 244, 216, 0.16)";
+    ctx.fillRect(cell.x - 8, cell.y - 8, 16, 16);
+  });
+
+  ctx.fillStyle = "#fff4d8";
+  ctx.fillRect(672, 170, 170, 164);
+  ctx.strokeStyle = "#211916";
+  ctx.lineWidth = 4;
+  ctx.strokeRect(672, 170, 170, 164);
+  ctx.fillStyle = "#211916";
+  ctx.font = "bold 13px Courier New";
+  ctx.fillText("PITCH BRUSH", 702, 202);
+  ctx.font = "bold 12px Courier New";
+  drawWrappedCanvasText("Hold and drag over the ark. Dark pitch marks coated wood.", 696, 232, 124, 16, 4);
+  ctx.fillStyle = "#2b201d";
+  ctx.fillRect(722, 292, 52, 16);
+  ctx.fillStyle = "#6b442c";
+  ctx.fillRect(768, 284, 10, 32);
+
+  ctx.fillStyle = "#2b201d";
+  ctx.beginPath();
+  ctx.arc(brush.x, brush.y, 18, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = "#6b442c";
+  ctx.fillRect(brush.x + 12, brush.y - 4, 42, 8);
+
+  drawProgressBar(184, 434, 330, 24, progress, "PITCH COVERAGE");
+  drawInstruction(`Coverage: ${Math.floor(progress * 100)}%   Brush strokes: ${activeMinigame.strokes}`, 538, 452, 260);
+}
+
+function drawLargeArkSide(x, y, sealed) {
+  ctx.fillStyle = "#6f472f";
+  ctx.beginPath();
+  ctx.moveTo(x + 12, y + 182);
+  ctx.lineTo(x + 78, y + 70);
+  ctx.lineTo(x + 250, y + 24);
+  ctx.lineTo(x + 430, y + 70);
+  ctx.lineTo(x + 494, y + 182);
+  ctx.lineTo(x + 452, y + 216);
+  ctx.lineTo(x + 54, y + 216);
+  ctx.closePath();
+  ctx.fill();
+  ctx.strokeStyle = "#211916";
+  ctx.lineWidth = 5;
+  ctx.stroke();
+
+  ctx.fillStyle = "#b9794d";
+  for (let i = 0; i < 5; i += 1) {
+    ctx.fillRect(x + 64 + i * 72, y + 92 + i % 2 * 3, 72, 22);
+    ctx.fillRect(x + 48 + i * 78, y + 128, 78, 22);
+    ctx.fillRect(x + 72 + i * 66, y + 164, 66, 22);
+  }
+  ctx.strokeStyle = sealed ? "#1f1715" : "#5b3925";
+  ctx.lineWidth = sealed ? 5 : 3;
+  [[70, 90, 382], [54, 126, 410], [76, 162, 356], [112, 60, 284]].forEach(([sx, sy, w]) => {
+    ctx.beginPath();
+    ctx.moveTo(x + sx, y + sy);
+    ctx.lineTo(x + sx + w, y + sy);
+    ctx.stroke();
+  });
+  ctx.fillStyle = sealed ? "#211916" : "#8b5b3e";
+  ctx.fillRect(x + 394, y + 122, 52, 82);
+  ctx.strokeStyle = "#211916";
+  ctx.lineWidth = 4;
+  ctx.strokeRect(x + 394, y + 122, 52, 82);
+  ctx.fillStyle = "#2f2118";
+  ctx.fillRect(x + 226, y + 44, 64, 22);
+}
+
+function drawSealMarker(seam, current) {
+  const isCurrent = current && seam.id === current.id;
+  ctx.fillStyle = seam.done ? "#5f8f47" : isCurrent ? "#f0c66e" : "rgba(33, 25, 22, 0.22)";
+  ctx.beginPath();
+  ctx.arc(seam.x, seam.y, seam.r, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = "#211916";
+  ctx.lineWidth = isCurrent ? 4 : 2;
+  ctx.stroke();
+  ctx.fillStyle = "#211916";
+  ctx.font = "bold 15px Courier New";
+  ctx.fillText(seam.done ? "OK" : ".", seam.x - 8, seam.y + 6);
+}
+
+function drawFinalStoresMinigame() {
+  const supply = activeMinigame.supplies[activeMinigame.loaded];
+  ctx.fillText("LOAD FINAL STORES", 92, 92);
+  drawInstruction("Click the room that matches the current supply card.", 92, 126);
+
+  drawStoresArkInterior(146, 168);
+  activeMinigame.rooms.forEach((room) => drawFinalStoreRoom(room));
+  drawSupplyCard(supply, 680, 170);
+  drawProgressBar(196, 444, 302, 22, activeMinigame.loaded / activeMinigame.supplies.length, "STORES LOADED");
+  drawInstruction(`Loaded: ${activeMinigame.loaded}/${activeMinigame.supplies.length}   Rechecks: ${activeMinigame.misses}`, 522, 462);
+  if (activeMinigame.lastLoad) {
+    ctx.fillStyle = activeMinigame.lastLoad.ok ? "#3f7445" : "#a53d3b";
+    ctx.font = "bold 13px Courier New";
+    drawWrappedCanvasText(activeMinigame.lastLoad.text, 680, 366, 190, 15, 2);
+  }
+}
+
+function drawStoresArkInterior(x, y) {
+  ctx.fillStyle = "#7a5439";
+  ctx.beginPath();
+  ctx.moveTo(x + 10, y + 214);
+  ctx.lineTo(x + 74, y + 42);
+  ctx.lineTo(x + 264, y + 8);
+  ctx.lineTo(x + 454, y + 42);
+  ctx.lineTo(x + 516, y + 214);
+  ctx.closePath();
+  ctx.fill();
+  ctx.strokeStyle = "#211916";
+  ctx.lineWidth = 5;
+  ctx.stroke();
+  ctx.fillStyle = "#c28a55";
+  ctx.fillRect(x + 42, y + 70, 444, 156);
+  ctx.strokeStyle = "#4b3022";
+  ctx.lineWidth = 4;
+  ctx.strokeRect(x + 42, y + 70, 444, 156);
+  ctx.fillStyle = "#5b3925";
+  ctx.fillRect(x + 42, y + 147, 444, 7);
+  ctx.fillRect(x + 260, y + 70, 7, 156);
+}
+
+function drawFinalStoreRoom(room) {
+  ctx.fillStyle = "#ead393";
+  ctx.fillRect(room.x, room.y, room.w, room.h);
+  ctx.strokeStyle = "#211916";
+  ctx.lineWidth = 3;
+  ctx.strokeRect(room.x, room.y, room.w, room.h);
+  ctx.fillStyle = "#fff4d8";
+  ctx.fillRect(room.x + 8, room.y + 8, 34, 34);
+  drawRoomIcon(room.icon, room.x + 12, room.y + 8, 0.84);
+  ctx.fillStyle = "#211916";
+  ctx.font = "bold 11px Courier New";
+  drawFittedText(room.label, room.x + 50, room.y + 35, room.w - 58, 11);
+}
+
+function drawSupplyCard(supply, x, y) {
+  ctx.fillStyle = "#fff4d8";
+  ctx.fillRect(x, y, 204, 176);
+  ctx.strokeStyle = "#211916";
+  ctx.lineWidth = 4;
+  ctx.strokeRect(x, y, 204, 176);
+  ctx.fillStyle = "#211916";
+  ctx.font = "bold 13px Courier New";
+  ctx.fillText("SUPPLY CARD", x + 48, y + 34);
+  if (!supply) return;
+  ctx.fillStyle = "#dcc48d";
+  ctx.fillRect(x + 56, y + 54, 88, 52);
+  ctx.strokeStyle = "#6f472f";
+  ctx.lineWidth = 3;
+  ctx.strokeRect(x + 56, y + 54, 88, 52);
+  ctx.fillStyle = "#8b5b3e";
+  ctx.fillRect(x + 70, y + 44, 60, 16);
+  ctx.fillStyle = "#211916";
+  ctx.font = "bold 12px Courier New";
+  drawWrappedCanvasText(supply.label, x + 22, y + 126, 160, 15, 3);
+}
+
+function drawAnimalPair(animal, x, y) {
+  drawAnimalShape(animal.shape, x, y, animal.body, animal.accent, 0.98);
+  drawAnimalShape(animal.shape, x + 104, y + 8, animal.body, animal.accent, 0.9);
+}
+
+function drawAnimalShape(shape, x, y, body, accent, scale) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.scale(scale, scale);
+  if (shape === "cattle") drawCattleAnimal(body, accent);
+  if (shape === "sheep") drawSheepAnimal(body, accent);
+  if (shape === "goat") drawGoatAnimal(body, accent);
+  if (shape === "dove") drawDoveAnimal(body, accent);
+  if (shape === "camel") drawCamelAnimal(body, accent);
+  if (shape === "horse") drawHorseAnimal(body, accent);
+  if (shape === "raven") drawRavenAnimal(body, accent);
+  if (shape === "lizard") drawLizardAnimal(body, accent);
+  ctx.restore();
+}
+
+function drawCattleAnimal(body, accent) {
+  ctx.strokeStyle = "#3a241b";
+  ctx.lineWidth = 2;
+
+  ctx.fillStyle = "#5b3925";
+  ctx.fillRect(4, 43, 9, 5);
+  ctx.strokeStyle = "#3a241b";
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.moveTo(9, 45);
+  ctx.lineTo(-5, 34);
+  ctx.stroke();
+
+  ctx.fillStyle = body;
+  ctx.beginPath();
+  ctx.moveTo(10, 39);
+  ctx.lineTo(20, 31);
+  ctx.lineTo(52, 31);
+  ctx.quadraticCurveTo(62, 34, 64, 45);
+  ctx.lineTo(58, 58);
+  ctx.lineTo(20, 59);
+  ctx.quadraticCurveTo(9, 54, 10, 39);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+
+  ctx.beginPath();
+  ctx.moveTo(58, 30);
+  ctx.lineTo(76, 27);
+  ctx.quadraticCurveTo(88, 32, 80, 45);
+  ctx.lineTo(61, 45);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+
+  ctx.fillStyle = accent;
+  ctx.fillRect(18, 35, 14, 9);
+  ctx.fillRect(40, 42, 13, 8);
+  ctx.fillRect(25, 49, 9, 6);
+  ctx.fillRect(18, 57, 7, 24);
+  ctx.fillRect(34, 57, 7, 24);
+  ctx.fillRect(48, 56, 7, 25);
+  ctx.fillRect(67, 45, 6, 18);
+
+  ctx.fillStyle = "#2b201d";
+  ctx.fillRect(17, 79, 11, 4);
+  ctx.fillRect(33, 79, 11, 4);
+  ctx.fillRect(47, 80, 11, 4);
+  ctx.fillRect(66, 62, 9, 4);
+  ctx.fillRect(60, 43, 7, 15);
+
+  ctx.fillStyle = "#f0d7b2";
+  ctx.fillRect(74, 38, 10, 6);
+  ctx.fillRect(69, 47, 10, 6);
+  ctx.fillStyle = "#111";
+  ctx.fillRect(77, 41, 2, 2);
+  ctx.fillRect(72, 32, 3, 3);
+
+  ctx.strokeStyle = "#e8d7aa";
+  ctx.lineWidth = 4;
+  ctx.beginPath();
+  ctx.moveTo(62, 29);
+  ctx.lineTo(51, 18);
+  ctx.moveTo(73, 28);
+  ctx.lineTo(88, 18);
+  ctx.stroke();
+
+  ctx.fillStyle = "#6b442c";
+  ctx.fillRect(57, 48, 4, 13);
+}
+
+function drawSheepAnimal(body, accent) {
+  ctx.strokeStyle = "#5b4636";
+  ctx.lineWidth = 2;
+  ctx.fillStyle = "#4d382c";
+  ctx.fillRect(20, 58, 6, 21);
+  ctx.fillRect(46, 58, 6, 21);
+  ctx.fillRect(19, 77, 10, 4);
+  ctx.fillRect(45, 77, 10, 4);
+  ctx.fillStyle = "#f8f0dc";
+  const fleece = [
+    [17, 40, 13], [28, 34, 15], [42, 34, 15], [55, 40, 13],
+    [21, 51, 14], [36, 49, 16], [51, 52, 13],
+  ];
+  fleece.forEach(([x, y, r]) => {
+    ctx.beginPath();
+    ctx.ellipse(x, y, r, r - 2, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+  });
+  ctx.fillStyle = "#efe2c7";
+  ctx.beginPath();
+  ctx.ellipse(70, 38, 13, 12, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
+  ctx.fillStyle = "#f8f0dc";
+  ctx.beginPath();
+  ctx.ellipse(63, 31, 8, 7, 0, 0, Math.PI * 2);
+  ctx.ellipse(72, 29, 8, 7, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = "#7a5a45";
+  ctx.beginPath();
+  ctx.ellipse(58, 39, 7, 4, -0.35, 0, Math.PI * 2);
+  ctx.ellipse(81, 37, 7, 4, 0.35, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = "#111";
+  ctx.fillRect(73, 35, 3, 3);
+  ctx.fillStyle = "#5b4636";
+  ctx.fillRect(79, 43, 3, 2);
+}
+
+function drawGoatAnimal(body, accent) {
+  ctx.strokeStyle = "#3a241b";
+  ctx.lineWidth = 2;
+  ctx.fillStyle = body;
+  ctx.beginPath();
+  ctx.moveTo(12, 43);
+  ctx.quadraticCurveTo(30, 29, 58, 35);
+  ctx.quadraticCurveTo(63, 48, 50, 57);
+  ctx.lineTo(20, 58);
+  ctx.quadraticCurveTo(10, 52, 12, 43);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(58, 31);
+  ctx.lineTo(77, 24);
+  ctx.quadraticCurveTo(88, 30, 78, 41);
+  ctx.lineTo(61, 43);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+  ctx.fillStyle = accent;
+  ctx.fillRect(20, 56, 6, 24);
+  ctx.fillRect(47, 56, 6, 24);
+  ctx.fillRect(19, 78, 10, 4);
+  ctx.fillRect(46, 78, 10, 4);
+  ctx.strokeStyle = "#2b201d";
+  ctx.lineWidth = 4;
+  ctx.beginPath();
+  ctx.moveTo(62, 25);
+  ctx.quadraticCurveTo(55, 10, 49, 7);
+  ctx.moveTo(71, 24);
+  ctx.quadraticCurveTo(78, 9, 86, 7);
+  ctx.stroke();
+  ctx.fillStyle = "#f0e2c0";
+  ctx.fillRect(68, 40, 5, 15);
+  ctx.fillRect(78, 27, 8, 5);
+  ctx.fillStyle = "#111";
+  ctx.fillRect(72, 29, 3, 3);
+  ctx.strokeStyle = "#4b3022";
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.moveTo(12, 42);
+  ctx.lineTo(2, 33);
+  ctx.stroke();
+}
+
+function drawCamelAnimal(body, accent) {
+  ctx.strokeStyle = "#3a241b";
+  ctx.lineWidth = 2;
+  ctx.fillStyle = body;
+  ctx.beginPath();
+  ctx.moveTo(8, 47);
+  ctx.quadraticCurveTo(17, 27, 29, 24);
+  ctx.quadraticCurveTo(39, 5, 50, 24);
+  ctx.quadraticCurveTo(61, 22, 64, 35);
+  ctx.lineTo(62, 52);
+  ctx.quadraticCurveTo(38, 60, 12, 54);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+  ctx.fillStyle = "#9a673c";
+  ctx.beginPath();
+  ctx.moveTo(21, 29);
+  ctx.quadraticCurveTo(29, 12, 38, 30);
+  ctx.closePath();
+  ctx.fill();
+  ctx.beginPath();
+  ctx.moveTo(42, 28);
+  ctx.quadraticCurveTo(50, 12, 57, 31);
+  ctx.closePath();
+  ctx.fill();
+  ctx.fillStyle = body;
+  ctx.beginPath();
+  ctx.moveTo(58, 37);
+  ctx.quadraticCurveTo(66, 12, 76, 18);
+  ctx.quadraticCurveTo(89, 22, 80, 34);
+  ctx.quadraticCurveTo(70, 33, 65, 48);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+  ctx.fillStyle = accent;
+  ctx.fillRect(18, 54, 6, 29);
+  ctx.fillRect(47, 54, 6, 29);
+  ctx.fillRect(17, 81, 13, 4);
+  ctx.fillRect(46, 81, 13, 4);
+  ctx.fillRect(67, 37, 5, 18);
+  ctx.fillStyle = "#7c5133";
+  ctx.fillRect(61, 34, 6, 18);
+  ctx.fillRect(25, 20, 8, 4);
+  ctx.fillRect(47, 20, 8, 4);
+  ctx.strokeStyle = "#6b442c";
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.moveTo(11, 47);
+  ctx.lineTo(0, 37);
+  ctx.stroke();
+  ctx.fillStyle = "#111";
+  ctx.fillRect(78, 23, 3, 3);
+  ctx.fillStyle = "#5b3925";
+  ctx.fillRect(81, 31, 6, 3);
+}
+
+function drawHorseAnimal(body, accent) {
+  ctx.strokeStyle = "#2b201d";
+  ctx.lineWidth = 2;
+  ctx.fillStyle = body;
+  ctx.beginPath();
+  ctx.moveTo(9, 43);
+  ctx.quadraticCurveTo(22, 29, 48, 31);
+  ctx.quadraticCurveTo(62, 32, 66, 43);
+  ctx.lineTo(55, 57);
+  ctx.lineTo(19, 58);
+  ctx.quadraticCurveTo(8, 54, 9, 43);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(56, 34);
+  ctx.quadraticCurveTo(59, 15, 73, 13);
+  ctx.quadraticCurveTo(89, 15, 80, 30);
+  ctx.lineTo(65, 39);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+  ctx.fillStyle = accent;
+  ctx.fillRect(20, 56, 6, 27);
+  ctx.fillRect(50, 56, 6, 27);
+  ctx.fillRect(19, 81, 11, 4);
+  ctx.fillRect(49, 81, 11, 4);
+  ctx.fillRect(55, 20, 9, 28);
+  ctx.fillRect(66, 9, 5, 8);
+  ctx.fillRect(76, 12, 5, 8);
+  ctx.fillStyle = "#3a241b";
+  for (let i = 0; i < 5; i += 1) {
+    ctx.fillRect(57 + i, 22 + i * 4, 8, 5);
+  }
+  ctx.strokeStyle = accent;
+  ctx.lineWidth = 4;
+  ctx.beginPath();
+  ctx.moveTo(11, 42);
+  ctx.lineTo(-3, 27);
+  ctx.stroke();
+  ctx.fillStyle = "#d6a36b";
+  ctx.fillRect(77, 25, 9, 4);
+  ctx.fillStyle = "#111";
+  ctx.fillRect(74, 18, 3, 3);
+}
+
+function drawDoveAnimal(body, accent) {
+  drawBirdBody(body, accent, "#d89a3c", false);
+}
+
+function drawRavenAnimal(body, accent) {
+  drawBirdBody(body, accent, "#2b201d", true);
+}
+
+function drawBirdBody(body, accent, beak, longTail) {
+  ctx.strokeStyle = longTail ? "#111" : "#7a8f9a";
+  ctx.lineWidth = 2;
+  ctx.fillStyle = body;
+  ctx.beginPath();
+  ctx.ellipse(39, 43, 28, 16, -0.08, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.ellipse(64, 30, 13, 11, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
+  ctx.fillStyle = accent;
+  ctx.beginPath();
+  ctx.ellipse(30, 39, 25, 10, -0.58, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
+  ctx.strokeStyle = longTail ? "#6b6f78" : "#c9d4d8";
+  ctx.lineWidth = 2;
+  for (let i = 0; i < 3; i += 1) {
+    ctx.beginPath();
+    ctx.moveTo(20 + i * 7, 37 + i);
+    ctx.lineTo(39 + i * 6, 45 + i * 2);
+    ctx.stroke();
+  }
+  if (longTail) {
+    ctx.fillStyle = body;
+    ctx.beginPath();
+    ctx.moveTo(16, 43);
+    ctx.lineTo(-8, 34);
+    ctx.lineTo(12, 54);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+  }
+  ctx.fillStyle = beak;
+  ctx.beginPath();
+  ctx.moveTo(75, 29);
+  ctx.lineTo(90, 34);
+  ctx.lineTo(75, 39);
+  ctx.closePath();
+  ctx.fill();
+  ctx.fillStyle = longTail ? "#fff4d8" : "#111";
+  ctx.fillRect(66, 27, 3, 3);
+  ctx.strokeStyle = "#6b442c";
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(38, 57);
+  ctx.lineTo(34, 72);
+  ctx.moveTo(49, 57);
+  ctx.lineTo(51, 72);
+  ctx.stroke();
+}
+
+function drawLizardAnimal(body, accent) {
+  ctx.strokeStyle = accent;
+  ctx.lineWidth = 2;
+  ctx.fillStyle = body;
+  ctx.beginPath();
+  ctx.moveTo(8, 43);
+  ctx.quadraticCurveTo(26, 31, 59, 36);
+  ctx.quadraticCurveTo(77, 36, 88, 42);
+  ctx.quadraticCurveTo(73, 50, 42, 50);
+  ctx.quadraticCurveTo(20, 50, 8, 43);
+  ctx.fill();
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(78, 36);
+  ctx.quadraticCurveTo(91, 32, 96, 40);
+  ctx.quadraticCurveTo(91, 48, 78, 45);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+  ctx.strokeStyle = accent;
+  ctx.lineWidth = 5;
+  ctx.beginPath();
+  ctx.moveTo(10, 44);
+  ctx.bezierCurveTo(-6, 37, -16, 31, -26, 39);
+  ctx.stroke();
+  ctx.fillStyle = "#8ead5f";
+  ctx.fillRect(25, 37, 5, 3);
+  ctx.fillRect(37, 36, 5, 3);
+  ctx.fillRect(49, 38, 5, 3);
+  ctx.fillRect(61, 39, 5, 3);
+  ctx.fillStyle = "#d9e6a4";
+  ctx.fillRect(26, 48, 35, 3);
+  ctx.strokeStyle = accent;
+  ctx.lineWidth = 3;
+  [[27, 49, 15], [52, 49, 15], [31, 36, -14], [60, 38, -13]].forEach(([lx, ly, dy]) => {
+    ctx.beginPath();
+    ctx.moveTo(lx, ly);
+    ctx.lineTo(lx - 13, ly + dy);
+    ctx.lineTo(lx - 22, ly + dy + (dy > 0 ? 3 : -3));
+    ctx.stroke();
+  });
+  ctx.fillStyle = "#111";
+  ctx.fillRect(89, 38, 3, 3);
+  ctx.fillStyle = "#d89a3c";
+  ctx.fillRect(97, 42, 8, 2);
+}
+
+function roundedAnimalBody(x, y, w, h) {
+  ctx.beginPath();
+  ctx.ellipse(x + w / 2, y + h / 2, w / 2, h / 2, 0, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+function drawBuildMinigame() {
+  ctx.fillText("ASSEMBLE THE ARK FRAME", 92, 92);
+  drawInstruction("Drag each timber onto its matching outline. Use the first frame to start the ark.", 92, 126);
+  activeMinigame.slots.forEach((slot) => {
+    ctx.strokeStyle = "#9b6742";
+    ctx.lineWidth = 4;
+    ctx.strokeRect(slot.x, slot.y, slot.w, slot.h);
+  });
+  activeMinigame.pieces.forEach((piece) => {
+    ctx.fillStyle = piece.placed ? "#7a5439" : "#b9794d";
+    ctx.fillRect(piece.x, piece.y, piece.w, piece.h);
+    ctx.strokeStyle = "#211916";
+    ctx.lineWidth = 2;
+    ctx.strokeRect(piece.x, piece.y, piece.w, piece.h);
+  });
+  const placed = activeMinigame.pieces.filter((piece) => piece.placed).length;
+  drawInstruction(`Timbers placed: ${placed}/${activeMinigame.pieces.length}`, 346, 448);
+}
+
+function drawInstruction(text, x, y, maxWidth = canvas.width - x - 80) {
+  ctx.fillStyle = "#211916";
+  drawFittedText(text, x, y, maxWidth, 14);
+}
+
+function drawProgressBar(x, y, w, h, progress, label) {
+  ctx.fillStyle = "#dcc48d";
+  ctx.fillRect(x, y, w, h);
+  ctx.fillStyle = "#5f8f47";
+  ctx.fillRect(x, y, w * Math.max(0, Math.min(1, progress)), h);
+  ctx.strokeStyle = "#211916";
+  ctx.strokeRect(x, y, w, h);
+  ctx.fillStyle = "#211916";
+  const fontSize = Math.max(9, Math.min(12, h - 6));
+  ctx.font = `bold ${fontSize}px Courier New`;
+  ctx.textBaseline = "middle";
+  ctx.fillText(label, x + 8, y + h / 2 + 1);
+  ctx.textBaseline = "alphabetic";
+}
+
+function update(delta) {
+  if (gameMode !== "play") return;
+  if (activeMinigame) {
+    updateMinigame(delta);
+    return;
+  }
+  moveCooldown -= delta;
+  if (moveCooldown > 0 || dialogBox.style.display !== "none") return;
+
+  if (keys.has("arrowup") || keys.has("w")) {
+    tryMove(0, -1, "up");
+    moveCooldown = 130;
+  } else if (keys.has("arrowdown") || keys.has("s")) {
+    tryMove(0, 1, "down");
+    moveCooldown = 130;
+  } else if (keys.has("arrowleft") || keys.has("a")) {
+    tryMove(-1, 0, "left");
+    moveCooldown = 130;
+  } else if (keys.has("arrowright") || keys.has("d")) {
+    tryMove(1, 0, "right");
+    moveCooldown = 130;
+  }
+}
+
+function activateTitleMenu() {
+  const action = titleMenuActions[menuIndex];
+  if (action === "new") newGame();
+  if (action === "load") showLoad();
+  if (action === "options") showOptions();
+}
+
+document.addEventListener("keydown", (event) => {
+  const key = event.key.toLowerCase();
+
+  if (activeModal) {
+    if (key === "escape") {
+      event.preventDefault();
+      cancelActiveModal();
+      return;
+    }
+    if ((key === "enter" || key === " ") && document.activeElement === modalCancel) {
+      event.preventDefault();
+      cancelActiveModal();
+      return;
+    }
+    if ((key === "enter" || key === " ") && document.activeElement === modalConfirm) {
+      event.preventDefault();
+      confirmActiveModal();
+      return;
+    }
+    if (activeModal.type === "slot" && (key === "enter" || key === " ")) {
+      event.preventDefault();
+      const slotButton = document.activeElement && document.activeElement.closest ? document.activeElement.closest("[data-modal-slot]") : null;
+      if (slotButton) activeModal.resolve(Number.parseInt(slotButton.dataset.modalSlot, 10));
+      return;
+    }
+    if (key === "enter") {
+      event.preventDefault();
+      confirmActiveModal();
+    }
+    return;
+  }
+
+  if (["arrowup", "arrowdown", "arrowleft", "arrowright", " ", "enter", "escape", "w", "a", "s", "d", "m"].includes(key)) {
+    event.preventDefault();
+  }
+
+  if (activeMinigame) {
+    if (key === " " || key === "enter") handleMinigameAction();
+    if (key === "escape") {
+      activeMinigame = null;
+      setDialog("Task paused. Interact with the work area again when you are ready.");
+    }
+    return;
+  }
+
+  if (gameMode === "title") {
+    if (key === "arrowup" || key === "w") menuIndex = (menuIndex + titleMenuActions.length - 1) % titleMenuActions.length;
+    if (key === "arrowdown" || key === "s") menuIndex = (menuIndex + 1) % titleMenuActions.length;
+    if (key === " " || key === "enter") activateTitleMenu();
+    renderTitleSelection();
+    return;
+  }
+
+  if (gameMode === "load" || gameMode === "options") {
+    if (gameMode === "load" && (key === "arrowup" || key === "w")) {
+      loadMenuIndex = (loadMenuIndex + saveSlotCount - 1) % saveSlotCount;
+      renderLoadSlots();
+    }
+    if (gameMode === "load" && (key === "arrowdown" || key === "s")) {
+      loadMenuIndex = (loadMenuIndex + 1) % saveSlotCount;
+      renderLoadSlots();
+    }
+    if (gameMode === "load" && (key === " " || key === "enter")) loadGame();
+    if (key === "escape" || key === "backspace") showTitle();
+    if (gameMode === "options" && (key === " " || key === "enter")) showTitle();
+    return;
+  }
+
+  if (gameMode === "pause") {
+    if (key === "arrowup" || key === "w") pauseMenuIndex = (pauseMenuIndex + 2) % 3;
+    if (key === "arrowdown" || key === "s") pauseMenuIndex = (pauseMenuIndex + 1) % 3;
+    if (key === " " || key === "enter") activatePauseMenu();
+    if (key === "escape") closePauseMenu();
+    renderPauseSelection();
+    return;
+  }
+
+  if (key === "escape") {
+    openPauseMenu();
+    return;
+  }
+
+  if (key === " " || key === "enter") {
+    interact();
+    return;
+  }
+  if (key === "m") {
+    saveGame();
+    return;
+  }
+  keys.add(key);
+});
+
+document.addEventListener("keyup", (event) => {
+  keys.delete(event.key.toLowerCase());
+});
+
+window.addEventListener("blur", clearTouchDirections);
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) clearTouchDirections();
+});
+
+function enableTouchControls() {
+  document.body.classList.add("touch-controls-enabled");
+}
+
+function clearTouchDirections() {
+  ["up", "down", "left", "right"].forEach((direction) => keys.delete(`arrow${direction}`));
+  if (!touchDpad) return;
+  touchDpad.querySelectorAll(".dpad-btn.pressed").forEach((button) => button.classList.remove("pressed"));
+  dpadPointerButtons.clear();
+}
+
+function setupTouchControls() {
+  if (!touchDpad) return;
+  const coarsePointer = window.matchMedia ? window.matchMedia("(pointer: coarse)") : null;
+  if ((navigator.maxTouchPoints || 0) > 0 || (coarsePointer && coarsePointer.matches)) enableTouchControls();
+  if (coarsePointer && coarsePointer.addEventListener) {
+    coarsePointer.addEventListener("change", (event) => {
+      if (event.matches) enableTouchControls();
+    });
+  } else if (coarsePointer && coarsePointer.addListener) {
+    coarsePointer.addListener((event) => {
+      if (event.matches) enableTouchControls();
+    });
+  }
+
+  const pressButton = (button) => {
+    if (!button) return;
+    enableTouchControls();
+    button.classList.add("pressed");
+    const direction = button.dataset.touchDir;
+    if (direction) {
+      keys.add(`arrow${direction}`);
+      stepTouchDirection(direction);
+      return;
+    }
+    if (button.dataset.touchAction === "interact") {
+      if (activeMinigame) {
+        handleMinigameAction();
+      } else if (gameMode === "play") {
+        interact();
+      }
+    }
+  };
+
+  const releaseButton = (button) => {
+    if (!button) return;
+    button.classList.remove("pressed");
+    const direction = button.dataset.touchDir;
+    if (direction) keys.delete(`arrow${direction}`);
+  };
+
+  if (window.PointerEvent) {
+    touchDpad.addEventListener("pointerdown", (event) => {
+      const button = event.target.closest(".dpad-btn");
+      if (!button) return;
+      event.preventDefault();
+      dpadPointerButtons.set(event.pointerId, button);
+      if (button.setPointerCapture) button.setPointerCapture(event.pointerId);
+      pressButton(button);
+    });
+
+    const releaseTouchButton = (event) => {
+      const button = dpadPointerButtons.get(event.pointerId) || event.target.closest(".dpad-btn");
+      if (!button) return;
+      event.preventDefault();
+      releaseButton(button);
+      dpadPointerButtons.delete(event.pointerId);
+      if (button.hasPointerCapture && button.hasPointerCapture(event.pointerId)) button.releasePointerCapture(event.pointerId);
+    };
+
+    touchDpad.addEventListener("pointerup", releaseTouchButton);
+    touchDpad.addEventListener("pointercancel", releaseTouchButton);
+    touchDpad.addEventListener("lostpointercapture", releaseTouchButton);
+  } else {
+    touchDpad.addEventListener("touchstart", (event) => {
+      const button = event.target.closest(".dpad-btn");
+      if (!button) return;
+      event.preventDefault();
+      pressButton(button);
+    }, { passive: false });
+
+    const releaseTouchedButtons = (event) => {
+      event.preventDefault();
+      touchDpad.querySelectorAll(".dpad-btn.pressed").forEach(releaseButton);
+    };
+
+    touchDpad.addEventListener("touchend", releaseTouchedButtons, { passive: false });
+    touchDpad.addEventListener("touchcancel", releaseTouchedButtons, { passive: false });
+  }
+
+  touchDpad.addEventListener("touchmove", (event) => event.preventDefault(), { passive: false });
+}
+
+function stepTouchDirection(direction) {
+  if (gameMode !== "play" || activeMinigame || dialogBox.style.display !== "none") return;
+  if (moveCooldown > 0) return;
+  const moves = {
+    up: [0, -1, "up"],
+    down: [0, 1, "down"],
+    left: [-1, 0, "left"],
+    right: [1, 0, "right"],
+  };
+  const move = moves[direction];
+  if (!move) return;
+  tryMove(move[0], move[1], move[2]);
+  moveCooldown = 130;
+}
+
+function handleDocumentActivation(event) {
+  if (activeModal) {
+    const slotButton = event.target.closest("[data-modal-slot]");
+    if (slotButton) {
+      activeModal.resolve(Number.parseInt(slotButton.dataset.modalSlot, 10));
+      return;
+    }
+    if (event.target === modalConfirm) {
+      confirmActiveModal();
+      return;
+    }
+    if (event.target === modalCancel) {
+      cancelActiveModal();
+      return;
+    }
+    return;
+  }
+
+  if (event.target.closest(".touch-dpad")) return;
+
+  if (activeMinigame) {
+    handleMinigameAction(canvasPointFromEvent(event));
+    return;
+  }
+
+  if (event.target.closest("#topMenuBtn")) {
+    openPauseMenu();
+    return;
+  }
+
+  const pauseButton = event.target.closest("[data-pause-action]");
+  if (pauseButton) {
+    const action = pauseButton.dataset.pauseAction;
+    pauseMenuIndex = ["resume", "save", "title"].indexOf(action);
+    renderPauseSelection();
+    if (action === "resume") closePauseMenu();
+    if (action === "save") openSaveSlotMenu();
+    if (action === "title") showTitle();
+    return;
+  }
+
+  const saveButton = event.target.closest("[data-save-slot]");
+  if (saveButton) {
+    saveMenuIndex = Number.parseInt(saveButton.dataset.saveSlot, 10);
+    saveToSlot(saveMenuIndex);
+    return;
+  }
+
+  if (event.target.closest("[data-save-action='back']")) {
+    backToPauseMenu();
+    return;
+  }
+
+  const menuButton = event.target.closest("[data-menu-action]");
+  if (menuButton) {
+    const action = menuButton.dataset.menuAction;
+    if (action === "new") newGame();
+    if (action === "load") showLoad();
+    if (action === "options") showOptions();
+    return;
+  }
+
+  const renameButton = event.target.closest("[data-rename-slot]");
+  if (renameButton) {
+    renameSaveSlot(Number.parseInt(renameButton.dataset.renameSlot, 10));
+    return;
+  }
+
+  const deleteButton = event.target.closest("[data-delete-slot]");
+  if (deleteButton) {
+    deleteSaveSlot(Number.parseInt(deleteButton.dataset.deleteSlot, 10));
+    return;
+  }
+  const loadButton = event.target.closest("[data-load-slot]");
+  if (loadButton) {
+    loadMenuIndex = Number.parseInt(loadButton.dataset.loadSlot, 10);
+    loadGame(loadMenuIndex);
+  }
+  if (event.target.closest("[data-screen-action='back']")) showTitle();
+}
+
+document.addEventListener("click", (event) => {
+  if (performance.now() - lastTouchActivationAt < 500) return;
+  handleDocumentActivation(event);
+});
+
+document.addEventListener("touchend", (event) => {
+  if (event.target.closest(".touch-dpad")) return;
+  if (event.cancelable) event.preventDefault();
+  lastTouchActivationAt = performance.now();
+  handleDocumentActivation(event);
+}, { passive: false });
+
+canvas.addEventListener("pointerdown", (event) => {
+  if (!activeMinigame || !["build", "seal"].includes(activeMinigame.type)) return;
+  if (activeMinigame.phase === "intro") return;
+  if (activePointerId !== null || event.isPrimary === false) return;
+  const point = canvasPointFromEvent(event);
+  if (activeMinigame.type === "seal") {
+    event.preventDefault();
+    activePointerId = event.pointerId;
+    if (canvas.setPointerCapture) canvas.setPointerCapture(event.pointerId);
+    coatPitchAt(point);
+    return;
+  }
+  const piece = [...activeMinigame.pieces].reverse().find((item) => !item.placed && point.x >= item.x && point.x <= item.x + item.w && point.y >= item.y && point.y <= item.y + item.h);
+  if (!piece) return;
+  event.preventDefault();
+  activePointerId = event.pointerId;
+  if (canvas.setPointerCapture) canvas.setPointerCapture(event.pointerId);
+  dragPiece = { piece, offsetX: point.x - piece.x, offsetY: point.y - piece.y };
+});
+
+canvas.addEventListener("pointermove", (event) => {
+  if (activeMinigame && activeMinigame.type === "seal" && event.pointerId === activePointerId) {
+    event.preventDefault();
+    coatPitchAt(canvasPointFromEvent(event));
+    return;
+  }
+  if (!dragPiece) return;
+  if (event.pointerId !== activePointerId) return;
+  event.preventDefault();
+  const point = canvasPointFromEvent(event);
+  dragPiece.piece.x = point.x - dragPiece.offsetX;
+  dragPiece.piece.y = point.y - dragPiece.offsetY;
+});
+
+canvas.addEventListener("pointerup", (event) => {
+  if (event.pointerId !== activePointerId) return;
+  event.preventDefault();
+  if (activeMinigame && activeMinigame.type === "seal") {
+    finishActivePointer(event.pointerId);
+    return;
+  }
+  finishDragPiece(event.pointerId);
+});
+
+canvas.addEventListener("pointercancel", (event) => {
+  if (event.pointerId !== activePointerId) return;
+  if (activeMinigame && activeMinigame.type === "seal") {
+    finishActivePointer(event.pointerId);
+    return;
+  }
+  finishDragPiece(event.pointerId);
+});
+
+function finishActivePointer(pointerId = activePointerId) {
+  if (pointerId !== null && canvas.hasPointerCapture && canvas.hasPointerCapture(pointerId)) {
+    canvas.releasePointerCapture(pointerId);
+  }
+  activePointerId = null;
+}
+
+function finishDragPiece(pointerId = activePointerId) {
+  finishActivePointer(pointerId);
+  if (!dragPiece || !activeMinigame || activeMinigame.type !== "build") {
+    dragPiece = null;
+    return;
+  }
+  const piece = dragPiece.piece;
+  const slot = activeMinigame.slots.find((item) => item.id === piece.id);
+  if (slot && Math.abs(piece.x - slot.x) < 34 && Math.abs(piece.y - slot.y) < 34) {
+    piece.x = slot.x;
+    piece.y = slot.y;
+    piece.placed = true;
+  }
+  dragPiece = null;
+  if (activeMinigame.pieces.every((item) => item.placed)) completeBuildMinigame();
+}
+
+function canvasPointFromEvent(event) {
+  const rect = canvas.getBoundingClientRect();
+  const source = event.changedTouches && event.changedTouches.length ? event.changedTouches[0] : event;
+  return {
+    x: ((source.clientX - rect.left) / rect.width) * canvas.width,
+    y: ((source.clientY - rect.top) / rect.height) * canvas.height,
+  };
+}
+
+let lastTime = performance.now();
+function loop(now) {
+  const delta = now - lastTime;
+  lastTime = now;
+  update(delta);
+  drawScene();
+  requestAnimationFrame(loop);
+}
+
+hideDialogBox();
+setupTouchControls();
+renderTitleSelection();
+updateHud();
+updateMenuButtonVisibility();
+drawScene();
+requestAnimationFrame(loop);

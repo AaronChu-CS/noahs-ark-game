@@ -2020,21 +2020,21 @@ function drawLabels() {
 function drawPhase2Landmarks() {
   if (currentMapId === "worksite") {
     drawArkFrameLandmark();
-    drawTravelSign(4, 8, "GOPHER", "WOOD");
-    drawTravelSign(21, 8, "PITCH", "PITS");
-    drawTravelSign(12, 15, "FOOD", "TENTS");
+    drawTravelSign(4, 8, "GOPHER", "WOOD", "left");
+    drawTravelSign(21, 8, "PITCH", "PITS", "right");
+    drawTravelSign(12, 15, "FOOD", "TENTS", "down");
   }
   if (currentMapId === "forest") {
     drawResourceMarkers("wood");
-    drawTravelSign(22, 8, "ARK", "SITE");
+    drawTravelSign(22, 8, "ARK", "SITE", "right");
   }
   if (currentMapId === "pitch") {
     drawResourceMarkers("pitch");
-    drawTravelSign(3, 8, "ARK", "SITE");
+    drawTravelSign(3, 8, "ARK", "SITE", "left");
   }
   if (currentMapId === "supplies") {
     drawResourceMarkers("food");
-    drawTravelSign(18, 1, "ARK", "SITE");
+    drawTravelSign(18, 1, "ARK", "SITE", "up");
   }
 }
 
@@ -2198,7 +2198,7 @@ function drawResourceMarkers(type) {
     });
 }
 
-function drawTravelSign(x, y, lineOne, lineTwo) {
+function drawTravelSign(x, y, lineOne, lineTwo, direction = null) {
   const px = x * tileSize;
   const py = y * tileSize;
   const w = 88;
@@ -2216,9 +2216,31 @@ function drawTravelSign(x, y, lineOne, lineTwo) {
   ctx.lineWidth = 2;
   ctx.strokeRect(px, py, w, h);
   ctx.fillStyle = "#211916";
-  drawReadableFittedText(lineOne, px + 9, py + 18, w - 18, 12);
-  drawReadableFittedText(lineTwo, px + 9, py + 32, w - 18, 12);
+  drawReadableFittedText(lineOne, px + 8, py + 18, w - 30, 12);
+  drawReadableFittedText(lineTwo, px + 8, py + 32, w - 30, 12);
+  if (direction) drawSignArrow(px + w - 20, py + 10, direction);
   ctx.lineWidth = 1;
+}
+
+function drawSignArrow(x, y, direction) {
+  ctx.fillStyle = "#211916";
+  if (direction === "left") {
+    ctx.fillRect(x + 5, y + 6, 13, 5);
+    ctx.fillRect(x + 2, y + 4, 5, 9);
+    ctx.fillRect(x, y + 6, 3, 5);
+  } else if (direction === "right") {
+    ctx.fillRect(x, y + 6, 13, 5);
+    ctx.fillRect(x + 11, y + 4, 5, 9);
+    ctx.fillRect(x + 16, y + 6, 3, 5);
+  } else if (direction === "up") {
+    ctx.fillRect(x + 7, y + 5, 5, 13);
+    ctx.fillRect(x + 5, y + 2, 9, 5);
+    ctx.fillRect(x + 7, y, 5, 3);
+  } else if (direction === "down") {
+    ctx.fillRect(x + 7, y, 5, 13);
+    ctx.fillRect(x + 5, y + 11, 9, 5);
+    ctx.fillRect(x + 7, y + 16, 5, 3);
+  }
 }
 
 function drawMapSign(lineOne, lineTwo, x, y, icon) {
